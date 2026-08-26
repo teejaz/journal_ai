@@ -236,6 +236,16 @@ body {
   position: relative;
 }
 .cal-day.today { color: var(--accent); font-weight: 600; background: var(--accent-glow); }
+.cal-day.selected {
+  background: var(--accent) !important;
+  color: #0d0f17 !important;
+  font-weight: 700;
+  box-shadow: 0 0 12px rgba(245, 182, 69, 0.7);
+}
+.cal-day.selected::after {
+  background: #0d0f17;
+  box-shadow: none;
+}
 .cal-day.has-entry { color: var(--text-primary); }
 .cal-day.has-entry::after {
   content: '';

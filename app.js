@@ -136,7 +136,21 @@ function savePrefs() {
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 function formatDate(iso) { return new Date(iso).toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' }); }
 function formatShortDate(iso) { return new Date(iso).toLocaleDateString('en-US', { month:'short', day:'numeric' }); }
-function isoDate(d = new Date()) { return d.toISOString().slice(0, 10); }
+
+function isoDate(d = new Date()) {
+  const dt = typeof d === 'string' ? new Date(d) : (d || new Date());
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, '0');
+  const day = String(dt.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function getEntryDate(e) {
+  if (!e) return '';
+  if (e.date && /^\d{4}-\d{2}-\d{2}$/.test(e.date)) return e.date;
+  if (e.createdAt) return isoDate(new Date(e.createdAt));
+  return '';
+}
 
 function plainText(md) {
   return (md || '')
@@ -1297,7 +1311,10 @@ function renderCalendar() {
 
   calTitle.textContent = calViewDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
-  const entryDates = new Set(entries.map(e => e.date));
+  const activeEntry = getEntry(currentId);
+  const activeDate = activeEntry ? getEntryDate(activeEntry) : null;
+
+  const entryDates = new Set(entries.map(e => getEntryDate(e)).filter(Boolean));
   const firstDay   = new Date(year, month, 1);
   const lastDay    = new Date(year, month + 1, 0);
   const startDow   = firstDay.getDay();
@@ -1310,16 +1327,42 @@ function renderCalendar() {
   for (let d = 1; d <= lastDay.getDate(); d++) {
     const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     const isToday = today.getFullYear() === year && today.getMonth() === month && today.getDate() === d;
+    const isSelected = activeDate === dateStr;
     const has = entryDates.has(dateStr);
-    const cls = ['cal-day', isToday ? 'today' : '', has ? 'has-entry' : ''].filter(Boolean).join(' ');
-    html += `<div class="${cls}" data-date="${dateStr}">${d}</div>`;
+    const cls = ['cal-day', isToday ? 'today' : '', has ? 'has-entry' : '', isSelected ? 'selected' : ''].filter(Boolean).join(' ');
+    html += `<div class="${cls}" data-date="${dateStr}" title="${has ? 'Click to open entry' : 'Click to write on this day'}">${d}</div>`;
   }
 
   calGrid.innerHTML = html;
   calGrid.querySelectorAll('.cal-day:not(.empty)').forEach(cell => {
     cell.addEventListener('click', () => {
-      const match = entries.find(e => e.date === cell.dataset.date);
-      if (match) loadEntry(match.id);
+      const dateStr = cell.dataset.date;
+      const dayEntries = entries.filter(e => getEntryDate(e) === dateStr);
+      if (dayEntries.length > 0) {
+        loadEntry(dayEntries[0].id);
+        const itemEl = document.querySelector(`.entry-item[data-id="${dayEntries[0].id}"]`);
+        if (itemEl) itemEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      } else {
+        const now = new Date();
+        const [y, m, d] = dateStr.split('-').map(Number);
+        const entryDateObj = new Date(y, m - 1, d, now.getHours(), now.getMinutes(), now.getSeconds());
+        const newEntry = {
+          id: uid(),
+          title: '',
+          content: '',
+          mood: null,
+          topics: [],
+          subtopics: [],
+          aiSummary: '',
+          createdAt: entryDateObj.toISOString(),
+          updatedAt: entryDateObj.toISOString(),
+          date: dateStr
+        };
+        entries.unshift(newEntry);
+        saveEntries();
+        loadEntry(newEntry.id);
+        byId('entryTitle')?.focus();
+      }
     });
   });
 }
@@ -1330,6 +1373,15 @@ function loadEntry(id) {
 
   const entry = getEntry(id);
   if (!entry) return;
+
+  // Sync calendar view month to entry's month if needed
+  const eDate = getEntryDate(entry);
+  if (eDate) {
+    const [ey, em] = eDate.split('-').map(Number);
+    if (ey && em && (calViewDate.getFullYear() !== ey || calViewDate.getMonth() !== (em - 1))) {
+      calViewDate = new Date(ey, em - 1, 1);
+    }
+  }
 
   if (byId('entryTitle'))     byId('entryTitle').value = entry.title || '';
   if (byId('editorTextarea')) byId('editorTextarea').value = entry.content || '';
@@ -1448,13 +1500,14 @@ function updateAllTimeStats() {
   const allUnique = new Set();
   entries.forEach(e => getUniqueWords(e.content).forEach(w => allUnique.add(w)));
 
-  const dates = [...new Set(entries.map(e => e.date))].sort().reverse();
+  const dates = [...new Set(entries.map(e => getEntryDate(e)).filter(Boolean))].sort().reverse();
   let streak = 0, check = isoDate();
   for (const date of dates) {
     if (date === check) {
       streak++;
-      const d = new Date(check); d.setDate(d.getDate() - 1);
-      check = isoDate(d);
+      const [y, m, d] = check.split('-').map(Number);
+      const prevDate = new Date(y, m - 1, d - 1);
+      check = isoDate(prevDate);
     } else if (date < check) break;
   }
 
