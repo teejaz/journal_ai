@@ -400,7 +400,7 @@
     <div class="ai-panel hidden" id="panelLlamaCpp">
       <div class="ai-field-group">
         <label class="ai-label">llama.cpp / Local Server URL</label>
-        <input type="text" id="llamacppUrl" class="ai-input" placeholder="http://localhost:8080" value="http://localhost:8080" />
+        <input type="text" id="llamacppUrl" class="ai-input" placeholder="http://localhost:9931" value="http://localhost:9931" />
         <span class="ai-hint">Compatible with <code>llama-server</code>, LM Studio (<code>http://localhost:1234</code>), LocalAI, &amp; vLLM</span>
       </div>
       <div class="ai-field-group">
@@ -409,15 +409,15 @@
       </div>
       <div class="ai-field-group">
         <div style="display:flex;align-items:center;justify-content:space-between">
-          <label class="ai-label">Server Model</label>
+          <label class="ai-label">Server Model ID</label>
           <span class="ai-hint" id="llamacppModelHint" style="font-size:0.65rem;color:var(--accent);cursor:pointer">⚡ Auto-detect server models</span>
         </div>
-        <select id="llamacppModelSelect" class="ai-input">
+        <select id="llamacppModelSelect" class="ai-input" style="margin-bottom:6px">
+          <option value="ggml-org/gemma-4-E4B-it-GGUF:Q8_0">ggml-org/gemma-4-E4B-it-GGUF:Q8_0</option>
           <option value="default">default (Active Server Model)</option>
           <option value="custom">-- Custom Model ID --</option>
         </select>
-        <input type="text" id="llamacppModel" class="ai-input hidden" placeholder="Enter model ID..." value="default" style="margin-top:6px" />
-        <span class="ai-hint">Start llama.cpp: <code>./llama-server -m model.gguf --port 8080 --host 0.0.0.0</code></span>
+        <input type="text" id="llamacppModel" class="ai-input" placeholder="Enter model ID (e.g. ggml-org/gemma-4-E4B-it-GGUF:Q8_0)..." value="ggml-org/gemma-4-E4B-it-GGUF:Q8_0" />
       </div>
     </div>
 

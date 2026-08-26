@@ -668,18 +668,18 @@ function updateLlamaCppModelDropdown(models, currentVal) {
 }
 
 async function callLlamaCpp(content) {
-  const baseUrl = (aiConfig.llamacppUrl || 'http://localhost:8080').replace(/\/$/, '');
+  const baseUrl = (aiConfig.llamacppUrl || 'http://localhost:9931').replace(/\/$/, '');
   const url = `${baseUrl}/v1/chat/completions`;
   const headers = { 'Content-Type': 'application/json' };
   if (aiConfig.llamacppKey) headers['Authorization'] = `Bearer ${aiConfig.llamacppKey}`;
 
   const body = {
-    model: (aiConfig.llamacppModel && aiConfig.llamacppModel !== 'default') ? aiConfig.llamacppModel : undefined,
     messages: [{ role: 'user', content: AI_PROMPT(content) }],
-    temperature: 0.2,
-    max_tokens: 1024,
-    response_format: { type: 'json_object' }
+    temperature: 0.2
   };
+  if (aiConfig.llamacppModel && aiConfig.llamacppModel !== 'default') {
+    body.model = aiConfig.llamacppModel;
+  }
 
   try {
     const res = await fetch(url, {
@@ -688,23 +688,16 @@ async function callLlamaCpp(content) {
       body: JSON.stringify(body)
     });
     if (!res.ok) {
-      // If response_format is rejected by older llama-server, retry without it
-      if (res.status === 400) {
-        delete body.response_format;
-        const retryRes = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
-        if (retryRes.ok) {
-          const data = await retryRes.json();
-          return cleanJsonResponse(data.choices?.[0]?.message?.content || '');
-        }
-      }
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || err.error || `llama.cpp HTTP ${res.status}`);
+      throw new Error(err.error?.message || err.error || `Server HTTP ${res.status}`);
     }
     const data = await res.json();
-    return cleanJsonResponse(data.choices?.[0]?.message?.content || '');
+    const msg = data.choices?.[0]?.message;
+    const text = msg?.content || msg?.reasoning_content || '';
+    return cleanJsonResponse(text);
   } catch (e) {
     if (e.message === 'Failed to fetch' || e.name === 'TypeError') {
-      throw new Error(`Cannot connect to llama.cpp server at ${baseUrl}. Ensure server is running with CORS enabled.`);
+      throw new Error(`Cannot connect to server at ${baseUrl}. Ensure server is running and accessible.`);
     }
     throw e;
   }
@@ -768,10 +761,11 @@ function openAiSettings() {
   });
 
   // Pre-fetch llama.cpp models
-  fetchLlamaCppModels(aiConfig.llamacppUrl || 'http://localhost:8080', aiConfig.llamacppKey).then(models => {
-    updateLlamaCppModelDropdown(models, aiConfig.llamacppModel);
+  const initialLcUrl = aiConfig.llamacppUrl || 'http://localhost:9931';
+  fetchLlamaCppModels(initialLcUrl, aiConfig.llamacppKey).then(models => {
+    updateLlamaCppModelDropdown(models, aiConfig.llamacppModel || 'ggml-org/gemma-4-E4B-it-GGUF:Q8_0');
   }).catch(() => {
-    updateLlamaCppModelDropdown([], aiConfig.llamacppModel);
+    updateLlamaCppModelDropdown(['ggml-org/gemma-4-E4B-it-GGUF:Q8_0'], aiConfig.llamacppModel || 'ggml-org/gemma-4-E4B-it-GGUF:Q8_0');
   });
 
   switchAiTab(selectedProvider);
@@ -859,11 +853,11 @@ async function testAiConnection() {
   const ollamaCustom = byId('ollamaModel');
   const lModel = (ollamaSelect?.value === 'custom' ? ollamaCustom?.value.trim() : ollamaSelect?.value) || ollamaCustom?.value.trim() || 'llama3';
 
-  const lcUrl   = byId('llamacppUrl')?.value.trim() || 'http://localhost:8080';
-  const lcKey   = byId('llamacppKey')?.value.trim() || '';
+  const lcUrl    = byId('llamacppUrl')?.value.trim() || 'http://localhost:9931';
+  const lcKey    = byId('llamacppKey')?.value.trim() || '';
   const lcSelect = byId('llamacppModelSelect');
   const lcCustom = byId('llamacppModel');
-  const lcModel = (lcSelect?.value === 'custom' ? lcCustom?.value.trim() : lcSelect?.value) || lcCustom?.value.trim() || 'default';
+  const lcModel  = lcCustom?.value.trim() || lcSelect?.value || 'ggml-org/gemma-4-E4B-it-GGUF:Q8_0';
 
   // Apply to config for testing
   aiConfig.provider      = selectedProvider;
@@ -911,7 +905,7 @@ function saveAiSettingsHandler() {
 
   const lcSelect = byId('llamacppModelSelect');
   const lcCustom = byId('llamacppModel');
-  const lcModel = (lcSelect?.value === 'custom' ? lcCustom?.value.trim() : lcSelect?.value) || lcCustom?.value.trim() || 'default';
+  const lcModel  = lcCustom?.value.trim() || lcSelect?.value || 'ggml-org/gemma-4-E4B-it-GGUF:Q8_0';
 
   aiConfig.provider      = selectedProvider;
   aiConfig.geminiKey     = byId('geminiKey')?.value.trim() || '';
@@ -920,7 +914,7 @@ function saveAiSettingsHandler() {
   aiConfig.openaiModel   = oModel;
   aiConfig.ollamaUrl     = byId('ollamaUrl')?.value.trim() || 'http://localhost:11434';
   aiConfig.ollamaModel   = lModel;
-  aiConfig.llamacppUrl   = byId('llamacppUrl')?.value.trim() || 'http://localhost:8080';
+  aiConfig.llamacppUrl   = byId('llamacppUrl')?.value.trim() || 'http://localhost:9931';
   aiConfig.llamacppKey   = byId('llamacppKey')?.value.trim() || '';
   aiConfig.llamacppModel = lcModel;
 
@@ -929,7 +923,7 @@ function saveAiSettingsHandler() {
   updateAiBtnLabel();
 
   const modal = byId('aiSettingsModal');
-  if (modal) modal.classList.remove('hidden');
+  if (modal) modal.classList.add('hidden');
 }
 
 function updateAiBtnLabel() {
@@ -1876,22 +1870,29 @@ Folio is your personal, private journaling space. Everything saves automatically
   byId('llamacppModelSelect')?.addEventListener('change', e => {
     const customInput = byId('llamacppModel');
     if (e.target.value === 'custom') {
-      customInput?.classList.remove('hidden');
       customInput?.focus();
-    } else {
-      customInput?.classList.add('hidden');
+    } else if (e.target.value && e.target.value !== 'default') {
+      if (customInput) customInput.value = e.target.value;
+    }
+  });
+
+  byId('llamacppModel')?.addEventListener('input', e => {
+    const select = byId('llamacppModelSelect');
+    if (select) {
+      const match = Array.from(select.options).find(o => o.value === e.target.value.trim());
+      select.value = match ? match.value : 'custom';
     }
   });
 
   byId('llamacppModelHint')?.addEventListener('click', async () => {
-    const url = byId('llamacppUrl')?.value.trim() || aiConfig.llamacppUrl || 'http://localhost:8080';
+    const url = byId('llamacppUrl')?.value.trim() || aiConfig.llamacppUrl || 'http://localhost:9931';
     const key = byId('llamacppKey')?.value.trim() || aiConfig.llamacppKey || '';
     const hint = byId('llamacppModelHint');
     if (hint) hint.textContent = '⏳ Checking server...';
     try {
       const models = await fetchLlamaCppModels(url, key);
       if (models && models.length > 0) {
-        updateLlamaCppModelDropdown(models, byId('llamacppModelSelect')?.value);
+        updateLlamaCppModelDropdown(models, byId('llamacppModel')?.value || models[0]);
         if (hint) hint.textContent = `✓ Found ${models.length} models`;
         setTimeout(() => { if (hint) hint.textContent = '⚡ Auto-detect server models'; }, 3000);
       } else {
