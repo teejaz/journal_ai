@@ -7,9 +7,19 @@
 ![Ollama](https://img.shields.io/badge/Ollama-Local_AI-white?style=flat-square&logo=ollama&logoColor=black)
 ![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)
 
-**Journal AI** is a distraction-free, privacy-first markdown journaling app designed for mindful daily writing and reflection. It features real-time metrics, an interactive calendar with mood tracking, typography switching, dynamic 3-tier word count milestones (750w ➔ 1,400w ➔ 2,100w celebration), and instant `.md` file export with structured YAML frontmatter.
+**Journal AI** is a distraction-free, privacy-first markdown journaling app designed for mindful daily writing and deep reflection. It features real-time metrics, an interactive calendar with date navigation, mood tracking, typography switching, dynamic 3-tier word count milestones (750w ➔ 1,400w ➔ 2,100w celebration), and instant `.md` file export with structured YAML frontmatter.
 
-The app supports multi-provider AI topic and emotion intelligence (Google Gemini, OpenAI, or local Ollama) to automatically discover compound themes (e.g., `career · excited`) and granular subtopic tags (e.g., `#building-ai-app`). All entries and API keys stay 100% client-side in browser local storage—requiring zero build tools or backend servers.
+The app features an interactive **AI Reflection & Analysis Hub** equipped with specialized prompt lenses:
+- 📋 **To-Dos & Actions**: Extracts interactive markdown checklists from your thoughts.
+- 🧭 **Core Principles**: Discovers mental models, values, and life rules you set for yourself.
+- 🔥 **Motivational Coach**: Empowering encouragement and tailored daily mantras.
+- 🎯 **Top Priorities (MITs)**: Identifies your 1–3 highest-leverage focus areas.
+- 📑 **Section Summary**: Concise thematic breakdown with key takeaways.
+- 🌡️ **Mood Deep-Dive**: Psychological analysis of emotional undertones and friction points.
+- 🏷️ **Compound Topics & Tags**: Discovers compound themes (`career · excited`) and `#subtopics`.
+- 💬 **Custom AI Prompts**: Ask any free-form question against your journal entry.
+
+All entries and API keys stay 100% client-side in browser local storage—requiring zero build tools or backend servers.
 
 ---
 

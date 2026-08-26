@@ -153,8 +153,61 @@
       <div class="preview-pane hidden" id="previewPane"></div>
     </div>
 
+    <!-- Dedicated AI Analysis & Insights View -->
+    <div class="analysis-view hidden" id="analysisView">
+      <div class="analysis-header">
+        <button class="btn-back-writing" id="backToWritingBtn" title="Return to writing (Esc)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+          Back to Writing
+        </button>
+        <div class="analysis-title-wrap">
+          <span class="analysis-entry-tag" id="analysisEntryTag">AI Reflection &amp; Insights</span>
+          <span class="analysis-provider-badge" id="analysisProviderBadge">AI Assistant</span>
+        </div>
+        <div class="analysis-actions">
+          <button class="btn-tool" id="appendAnalysisBtn" title="Append this insight into your journal entry">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
+            Insert into Entry
+          </button>
+          <button class="btn-tool" id="copyAnalysisBtn" title="Copy markdown to clipboard">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            Copy
+          </button>
+          <button class="btn-tool" id="rerunAnalysisBtn" title="Regenerate this analysis">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            Re-run
+          </button>
+        </div>
+      </div>
+
+      <!-- Lens Selection Pills -->
+      <div class="analysis-lens-bar" id="analysisLensBar">
+        <button class="lens-pill active" data-lens="todos">📋 To-Dos &amp; Actions</button>
+        <button class="lens-pill" data-lens="principles">🧭 Core Principles</button>
+        <button class="lens-pill" data-lens="motivation">🔥 Motivational Coach</button>
+        <button class="lens-pill" data-lens="mits">🎯 Top Priorities</button>
+        <button class="lens-pill" data-lens="summary">📑 Section Summary</button>
+        <button class="lens-pill" data-lens="mood">🌡️ Mood Deep-Dive</button>
+        <button class="lens-pill" data-lens="topics">🏷️ Topics &amp; Tags</button>
+        <button class="lens-pill" data-lens="custom">💬 Custom Prompt</button>
+      </div>
+
+      <!-- Custom Prompt Box (shown when Custom lens is selected) -->
+      <div class="analysis-custom-box hidden" id="analysisCustomBox">
+        <input type="text" id="analysisCustomInput" class="ai-input" placeholder="Ask anything about this entry (e.g. 'What lessons can I apply tomorrow?')..." />
+        <button class="btn-ai" id="runCustomPromptBtn" style="padding:7px 14px">Ask AI</button>
+      </div>
+
+      <!-- Analysis Results Card -->
+      <div class="analysis-output-container">
+        <div class="analysis-output-card" id="analysisOutputCard">
+          <div class="analysis-placeholder">Select an analysis lens above to generate insights.</div>
+        </div>
+      </div>
+    </div>
+
     <!-- Word Goal Progress Bar -->
-    <div class="goal-track">
+    <div class="goal-track" id="editorGoalTrack">
       <div class="goal-fill" id="editorGoalFill" style="width:0%"></div>
     </div>
 

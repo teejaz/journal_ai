@@ -728,6 +728,200 @@ async function analyzeWithAI(content) {
   }
 }
 
+// ─── AI ANALYSIS LENSES & TEXT GENERATION ────────────────────────────────────
+const ANALYSIS_LENSES = {
+  todos: {
+    name: 'To-Dos & Actions',
+    icon: '📋',
+    title: 'Action Items & Next Steps',
+    prompt: `Analyze this journal entry and extract all action items, commitments, to-dos, and follow-ups. Format as a clean markdown checklist (- [ ] Task name). Group them under '### Immediate Priorities' and '### Upcoming / Next Steps'. If no explicit tasks were mentioned, recommend 2-3 logical next steps based on the thoughts written.`
+  },
+  principles: {
+    name: 'Core Principles',
+    icon: '🧭',
+    title: 'Core Principles & Standards',
+    prompt: `Analyze this journal entry and extract the core personal principles, mental models, philosophies, or self-standards the author established, realized, or reinforced. Format each principle with a bold heading (e.g. ### 1. Principle Name) followed by a short quote or takeaway on how to live by it.`
+  },
+  motivation: {
+    name: 'Motivational Coach',
+    icon: '🔥',
+    title: 'Empowering Coach Boost',
+    prompt: `Act as an empathetic, high-energy personal performance coach. Read this journal entry, acknowledge the challenges or celebrate the wins, provide empowering perspective, and end with an actionable mantra for the day.`
+  },
+  mits: {
+    name: 'Top Priorities (MITs)',
+    icon: '🎯',
+    title: 'Most Important Tasks (MITs)',
+    prompt: `Analyze this journal entry and identify the 1 to 3 Most Important Tasks (MITs) — the highest-leverage actions that will make the biggest difference. Explain why each priority matters and the immediate first step.`
+  },
+  summary: {
+    name: 'Section Summary',
+    icon: '📑',
+    title: 'Section-by-Section Summary',
+    prompt: `Analyze this journal entry and provide a concise, section-by-section breakdown. For each distinct theme or paragraph, provide a bold heading and 2-3 bullet points summarizing the core thoughts and outcomes.`
+  },
+  mood: {
+    name: 'Mood Deep-Dive',
+    icon: '🌡️',
+    title: 'Psychological & Emotional Deep-Dive',
+    prompt: `Perform a deep emotional and psychological analysis of this journal entry. Break down: 1) Primary Emotional State, 2) Subtle Undertones, 3) Key Triggers & Friction Points, 4) Energy Level, and 5) A constructive mindset recommendation.`
+  },
+  topics: {
+    name: 'Topics & Tags',
+    icon: '🏷️',
+    title: 'Compound Themes & Tags',
+    prompt: `Analyze this journal entry and extract: 1) Broad Topics & Tones (e.g. career · excited, health · hopeful), 2) Granular Hashtags (#subtopics), and 3) A one-sentence reflection.`
+  },
+  custom: {
+    name: 'Custom Prompt',
+    icon: '💬',
+    title: 'Custom AI Analysis',
+    prompt: `Answer the user's custom question based on their journal entry.`
+  }
+};
+
+async function generateTextWithAI(promptInstruction, content) {
+  if (!content || !content.trim()) throw new Error('Journal entry is empty. Write something first.');
+
+  const fullPrompt = `${promptInstruction}\n\nJournal Entry:\n---\n${content.slice(0, 5000)}\n---`;
+
+  if (aiConfig.provider === 'gemini') {
+    if (!aiConfig.geminiKey) throw new Error('Please enter your Gemini API Key in Settings ⚙');
+    const targetModel = aiConfig.geminiModel || 'gemini-3.6-flash';
+    const models = [targetModel, 'gemini-3.6-flash', 'gemini-3.7-flash', 'gemini-3.6-pro', 'gemini-2.5-flash'];
+    const uniqueModels = [...new Set(models)];
+
+    const body = {
+      contents: [{ parts: [{ text: fullPrompt }] }],
+      generationConfig: { temperature: 0.3, maxOutputTokens: 1500 }
+    };
+
+    let lastError = null;
+    for (const model of uniqueModels) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${aiConfig.geminiKey}`;
+      try {
+        const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (res.ok) {
+          const data = await res.json();
+          const text = data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '';
+          if (text.trim()) return text.trim();
+        } else {
+          const err = await res.json().catch(() => ({}));
+          lastError = new Error(err.error?.message || `HTTP ${res.status}`);
+        }
+      } catch (e) {
+        lastError = e;
+      }
+    }
+    throw lastError || new Error('Failed to generate with Gemini');
+  }
+
+  if (aiConfig.provider === 'openai') {
+    if (!aiConfig.openaiKey) throw new Error('Please enter your OpenAI API Key in Settings ⚙');
+    const model = aiConfig.openaiModel || 'gpt-4o-mini';
+    const isReasoning = model.startsWith('o1') || model.startsWith('o3');
+
+    const body = {
+      model,
+      messages: [{ role: 'user', content: fullPrompt }]
+    };
+    if (isReasoning) {
+      body.max_completion_tokens = 1500;
+    } else {
+      body.temperature = 0.3;
+      body.max_tokens = 1500;
+    }
+
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${aiConfig.openaiKey}`
+      },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error?.message || `OpenAI HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content?.trim() || '';
+  }
+
+  if (aiConfig.provider === 'ollama') {
+    const baseUrl = (aiConfig.ollamaUrl || 'http://localhost:11434').replace(/\/$/, '');
+    const res = await fetch(`${baseUrl}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: aiConfig.ollamaModel || 'llama3',
+        messages: [{ role: 'user', content: fullPrompt }],
+        stream: false,
+        options: { temperature: 0.3 }
+      })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `Ollama HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    return (data.message?.content || data.response || '').trim();
+  }
+
+  if (aiConfig.provider === 'llamacpp') {
+    const baseUrl = (aiConfig.llamacppUrl || 'http://localhost:9931').replace(/\/$/, '');
+    const headers = { 'Content-Type': 'application/json' };
+    if (aiConfig.llamacppKey) headers['Authorization'] = `Bearer ${aiConfig.llamacppKey}`;
+
+    const body = {
+      messages: [{ role: 'user', content: fullPrompt }],
+      temperature: 0.3
+    };
+    if (aiConfig.llamacppModel && aiConfig.llamacppModel !== 'default') {
+      body.model = aiConfig.llamacppModel;
+    }
+
+    const res = await fetch(`${baseUrl}/v1/chat/completions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error?.message || `llama.cpp HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    const msg = data.choices?.[0]?.message;
+    return (msg?.content || msg?.reasoning_content || '').trim();
+  }
+
+  // Local heuristic generator
+  return generateLocalLensText(promptInstruction, content);
+}
+
+function generateLocalLensText(promptInstruction, content) {
+  const lines = content.split('\n').filter(l => l.trim());
+  const words = countWords(content);
+
+  if (promptInstruction.includes('checklist') || promptInstruction.includes('To-Dos')) {
+    const actionLines = lines.filter(l => /\b(need to|must|should|will|plan to|have to|todo|finish|start|build|buy|call)\b/i.test(l));
+    if (actionLines.length > 0) {
+      return `### Immediate Priorities\n` + actionLines.map(l => `- [ ] ${l.replace(/^[-*#\d.]+\s*/, '')}`).join('\n');
+    }
+    return `### Action Items\n- [ ] Review today's key insights and plan tomorrow's first step\n- [ ] Follow up on main priorities mentioned in this entry`;
+  }
+
+  if (promptInstruction.includes('principles') || promptInstruction.includes('Standards')) {
+    return `### Core Principles & Takeaways\n- **Continuous Consistency**: Small daily reflection compounds into massive clarity.\n- **Mindful Awareness**: Acknowledging thoughts and emotions is the first step to mastering them.`;
+  }
+
+  if (promptInstruction.includes('coach') || promptInstruction.includes('Motivational')) {
+    return `### 🌟 Coach's Note\nYou've written **${words} words** of thoughtful reflection today. Acknowledging your thoughts is proof of continuous growth.\n\n> "Consistency is not about perfection; it is about refusing to stop."\n\nKeep building your momentum today!`;
+  }
+
+  return `### Journal Summary\n- **Word Count**: ${words} words\n- **Core Theme**: Focused daily reflection\n- **Status**: Recorded and saved locally.`;
+}
+
 // ─── AI SETTINGS MODAL HANDLERS ───────────────────────────────────────────────
 function openAiSettings() {
   loadAiConfig();
@@ -1068,74 +1262,197 @@ function renderSidebarTopicFilters() {
   });
 }
 
-async function triggerAnalysis(showThinking = true) {
+let activeLens = 'todos';
+let activeAnalysisMarkdown = '';
+
+function openAnalysisView(lens = 'todos') {
   const entry = getEntry(currentId);
-  if (!entry || countWords(entry.content) < 3) return;
-
-  const topicsEl    = byId('entryTopics');
-  const subtopicsEl = byId('entrySubtopics');
-  const btn         = byId('aiAnalyzeBtn');
-
-  if (showThinking && topicsEl && subtopicsEl) {
-    const thinkHTML = `<div style="font-size:.72rem;color:var(--text-muted);font-style:italic">Analyzing...</div>`;
-    topicsEl.innerHTML = thinkHTML;
-    subtopicsEl.innerHTML = thinkHTML;
-    if (btn) btn.classList.add('loading');
+  if (!entry || !entry.content.trim()) {
+    alert('Please write something in your journal entry before running AI analysis.');
+    return;
   }
 
+  activeLens = lens;
+
+  // Clean the main writing UI so there is no clutter
+  const editorContainer = byId('editorContainer');
+  const entryMeta = byId('entryMeta');
+  const mdToolbar = byId('mdToolbar');
+  const goalTrack = byId('editorGoalTrack');
+  const analysisView = byId('analysisView');
+
+  if (editorContainer) editorContainer.classList.add('hidden');
+  if (entryMeta) entryMeta.classList.add('hidden');
+  if (mdToolbar) mdToolbar.classList.add('hidden');
+  if (goalTrack) goalTrack.classList.add('hidden');
+  if (analysisView) analysisView.classList.remove('hidden');
+
+  // Update header info
+  const entryTag = byId('analysisEntryTag');
+  if (entryTag) {
+    entryTag.textContent = entry.title || formatShortDate(entry.createdAt) || 'Journal Insights';
+  }
+
+  const providerBadge = byId('analysisProviderBadge');
+  if (providerBadge) {
+    const pNames = { gemini: 'Gemini', openai: 'OpenAI', ollama: 'Ollama', llamacpp: 'llama.cpp', none: 'Offline' };
+    const pModel = aiConfig[aiConfig.provider + 'Model'] || '';
+    providerBadge.textContent = `${pNames[aiConfig.provider] || 'AI'} ${pModel ? `(${pModel})` : ''}`;
+  }
+
+  // Update lens pill active states
+  document.querySelectorAll('.lens-pill').forEach(pill => {
+    pill.classList.toggle('active', pill.dataset.lens === activeLens);
+  });
+
+  const customBox = byId('analysisCustomBox');
+  if (customBox) {
+    customBox.classList.toggle('hidden', activeLens !== 'custom');
+  }
+
+  // Check if we already have saved analysis for this lens on this entry
+  const saved = entry.analysis && entry.analysis[activeLens];
+  if (saved) {
+    activeAnalysisMarkdown = saved;
+    renderAnalysisOutput(saved);
+  } else {
+    runLensAnalysis(activeLens);
+  }
+}
+
+function closeAnalysisView() {
+  const analysisView = byId('analysisView');
+  const editorContainer = byId('editorContainer');
+  const entryMeta = byId('entryMeta');
+  const mdToolbar = byId('mdToolbar');
+  const goalTrack = byId('editorGoalTrack');
+
+  if (analysisView) analysisView.classList.add('hidden');
+  if (editorContainer) editorContainer.classList.remove('hidden');
+  if (entryMeta) entryMeta.classList.remove('hidden');
+  if (mdToolbar) mdToolbar.classList.remove('hidden');
+  if (goalTrack) goalTrack.classList.remove('hidden');
+
+  byId('editorTextarea')?.focus();
+}
+
+async function runLensAnalysis(lensKey, customPromptText = '') {
+  const entry = getEntry(currentId);
+  if (!entry) return;
+
+  const card = byId('analysisOutputCard');
+  if (card) {
+    card.innerHTML = `
+      <div class="analysis-loading-wrap">
+        <div class="analysis-spinner"></div>
+        <div>Generating ${ANALYSIS_LENSES[lensKey]?.name || 'insights'}...</div>
+      </div>
+    `;
+  }
+
+  const lens = ANALYSIS_LENSES[lensKey] || ANALYSIS_LENSES.todos;
+  const promptInstruction = customPromptText || lens.prompt;
+
+  try {
+    const generated = await generateTextWithAI(promptInstruction, entry.content);
+    activeAnalysisMarkdown = generated;
+    renderAnalysisOutput(generated);
+
+    // Cache with entry
+    if (!entry.analysis) entry.analysis = {};
+    entry.analysis[lensKey] = generated;
+    saveEntries();
+
+    // Also run topic extractor in background to keep sidebar chips fresh
+    if (lensKey === 'topics' || !entry.topics || entry.topics.length === 0) {
+      triggerBackgroundTopicExtraction(entry);
+    }
+  } catch(err) {
+    if (card) {
+      card.innerHTML = `
+        <div style="padding:40px 20px;text-align:center;color:#f87171">
+          <div style="font-size:1.5rem;margin-bottom:8px">⚠️ Analysis Error</div>
+          <div>${err.message}</div>
+          <button class="btn-pill" id="retryAnalysisBtn" style="margin-top:16px">Try Again</button>
+        </div>
+      `;
+      byId('retryAnalysisBtn')?.addEventListener('click', () => runLensAnalysis(lensKey, customPromptText));
+    }
+  }
+}
+
+function renderAnalysisOutput(markdown) {
+  const card = byId('analysisOutputCard');
+  if (!card) return;
+  if (!markdown) {
+    card.innerHTML = `<div class="analysis-placeholder">Select an analysis lens above to generate insights.</div>`;
+    return;
+  }
+  card.innerHTML = renderMarkdown(markdown);
+}
+
+function appendAnalysisToEntry() {
+  const entry = getEntry(currentId);
+  if (!entry || !activeAnalysisMarkdown) return;
+
+  const lensTitle = ANALYSIS_LENSES[activeLens]?.title || 'AI Insights';
+  const appendText = `\n\n---\n\n## ✦ ${lensTitle}\n\n${activeAnalysisMarkdown}\n`;
+
+  const ta = byId('editorTextarea');
+  if (ta) {
+    ta.value = (ta.value || '').trim() + appendText;
+    updateCurrent();
+    saveEntries();
+    updateStats(ta.value);
+  }
+
+  closeAnalysisView();
+}
+
+async function copyAnalysisToClipboard() {
+  if (!activeAnalysisMarkdown) return;
+  try {
+    await navigator.clipboard.writeText(activeAnalysisMarkdown);
+    const btn = byId('copyAnalysisBtn');
+    if (btn) {
+      const orig = btn.innerHTML;
+      btn.innerHTML = `✓ Copied!`;
+      setTimeout(() => btn.innerHTML = orig, 2000);
+    }
+  } catch (e) {
+    alert('Copied to clipboard');
+  }
+}
+
+async function triggerBackgroundTopicExtraction(entry) {
+  if (!entry || countWords(entry.content) < 3) return;
   try {
     let result = null;
     if (aiConfig.provider !== 'none') {
       result = await analyzeWithAI(entry.content);
     }
-
-    let topics, subtopics, summary;
     if (result && Array.isArray(result.topics)) {
-      topics    = result.topics;
-      subtopics = Array.isArray(result.subtopics) ? result.subtopics : extractSubtopicsLocal(entry.content);
-      summary   = result.summary || '';
+      entry.topics    = result.topics;
+      entry.subtopics = Array.isArray(result.subtopics) ? result.subtopics : extractSubtopicsLocal(entry.content);
+      entry.aiSummary = result.summary || '';
     } else {
-      topics    = detectTopicsLocal(entry.content);
-      subtopics = extractSubtopicsLocal(entry.content);
-      summary   = '';
+      entry.topics    = detectTopicsLocal(entry.content);
+      entry.subtopics = extractSubtopicsLocal(entry.content);
     }
-
-    entry.topics    = topics;
-    entry.subtopics = subtopics;
-    entry.aiSummary = summary;
     saveEntries();
-
-    renderTopicChips(topics, topicsEl);
-    renderSubtopicTags(subtopics, subtopicsEl);
+    renderTopicChips(entry.topics, byId('entryTopics'));
+    renderSubtopicTags(entry.subtopics, byId('entrySubtopics'));
     renderSidebarTopicFilters();
-    updateMoodTimeline();
-    renderEntriesList();
+  } catch (e) {}
+}
 
-  } catch(err) {
-    console.error('AI Analysis Error:', err);
-    const topics    = detectTopicsLocal(entry.content);
-    const subtopics = extractSubtopicsLocal(entry.content);
-    entry.topics    = topics;
-    entry.subtopics = subtopics;
-    saveEntries();
-
-    renderTopicChips(topics, topicsEl);
-    renderSubtopicTags(subtopics, subtopicsEl);
-    renderSidebarTopicFilters();
-
-    if (showThinking && subtopicsEl) {
-      const errBadge = document.createElement('span');
-      errBadge.style.cssText = 'font-size:.65rem;color:#f87171;margin-left:6px';
-      errBadge.textContent = `(Used local: ${err.message})`;
-      subtopicsEl.appendChild(errBadge);
-    }
+async function triggerAnalysis(showThinking = true) {
+  const entry = getEntry(currentId);
+  if (!entry || countWords(entry.content) < 3) {
+    alert('Please write something in your entry before analyzing.');
+    return;
   }
-
-  if (btn) {
-    btn.classList.remove('loading');
-    btn.classList.add('ai-active');
-    setTimeout(() => btn.classList.remove('ai-active'), 2000);
-  }
+  openAnalysisView('todos');
 }
 
 // ─── TOPICS OVERVIEW MODAL ────────────────────────────────────────────────────
@@ -1243,13 +1560,15 @@ function renderMarkdown(md) {
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/__(.+?)__/g, '<strong>$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>').replace(/_(.+?)_/g, '<em>$1</em>')
     .replace(/`(.+?)`/g, '<code>$1</code>')
+    .replace(/^\s*[-*]\s+\[ \]\s+(.+)$/gm, '<li style="list-style:none"><input type="checkbox" disabled> $1</li>')
+    .replace(/^\s*[-*]\s+\[[xX]\]\s+(.+)$/gm, '<li style="list-style:none"><input type="checkbox" checked disabled> <del>$1</del></li>')
     .replace(/^\s*[-*]\s+(.+)$/gm, '<li>$1</li>').replace(/^\s*\d+\.\s+(.+)$/gm, '<li>$1</li>')
     .split('\n').map(line => {
       if (/^<(h[1-6]|blockquote|hr|li)/.test(line.trim())) return line;
       if (line.trim() === '') return '<br>';
       return `<p>${line}</p>`;
     }).join('\n');
-  return html.replace(/(<li>.*<\/li>\n?)+/g, m => `<ul>${m}</ul>`);
+  return html.replace(/(<li.*<\/li>\n?)+/g, m => `<ul style="padding-left:${m.includes('type="checkbox"') ? '0' : '20px'}">${m}</ul>`);
 }
 
 // ─── UI LIST & CALENDAR RENDERING ─────────────────────────────────────────────
@@ -1956,6 +2275,34 @@ Folio is your personal, private journaling space. Everything saves automatically
     renderEntriesList();
   });
 
+  // AI Analysis Hub Event Listeners
+  byId('backToWritingBtn')?.addEventListener('click', closeAnalysisView);
+  byId('appendAnalysisBtn')?.addEventListener('click', appendAnalysisToEntry);
+  byId('copyAnalysisBtn')?.addEventListener('click', copyAnalysisToClipboard);
+  byId('rerunAnalysisBtn')?.addEventListener('click', () => {
+    const customPrompt = activeLens === 'custom' ? byId('analysisCustomInput')?.value.trim() : '';
+    runLensAnalysis(activeLens, customPrompt);
+  });
+
+  // Lens Selection Pills
+  document.querySelectorAll('.lens-pill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      const lens = pill.dataset.lens;
+      openAnalysisView(lens);
+    });
+  });
+
+  // Custom Prompt Execution
+  const runCustomPrompt = () => {
+    const q = byId('analysisCustomInput')?.value.trim();
+    if (!q) { alert('Please enter a custom question or prompt.'); return; }
+    runLensAnalysis('custom', q);
+  };
+  byId('runCustomPromptBtn')?.addEventListener('click', runCustomPrompt);
+  byId('analysisCustomInput')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); runCustomPrompt(); }
+  });
+
   // Keyboard Shortcuts
   document.addEventListener('keydown', e => {
     const mod = e.ctrlKey || e.metaKey;
@@ -1970,6 +2317,10 @@ Folio is your personal, private journaling space. Everything saves automatically
       byId('deleteModal')?.classList.add('hidden');
       byId('topicsModal')?.classList.add('hidden');
       byId('aiSettingsModal')?.classList.add('hidden');
+      const analysisView = byId('analysisView');
+      if (analysisView && !analysisView.classList.contains('hidden')) {
+        closeAnalysisView();
+      }
     }
   });
 
