@@ -84,6 +84,7 @@ let searchQuery       = '';
 let currentFont       = 'lora';
 let previewMode       = false;
 let activeTopicFilter = null;
+let activeDateFilter  = null;
 let selectedProvider  = 'gemini';
 let sidebarView       = 'entries';
 let editingDocType    = 'entry';
@@ -1337,25 +1338,17 @@ const DEFAULT_PILLARS = [
     name: 'Career & Job Search',
     icon: '💼',
     isDefault: true,
-    realizations: [
-      { id: 'c1', text: 'Preparation beats anxiety: Practicing system design mock interviews weekly dramatically increases confidence.', date: '2026-08-20', quote: 'Felt way more prepared after the mock interview.' }
-    ],
-    solutions: [
-      { id: 'cs1', text: 'Set a dedicated 90-minute morning deep work block specifically for portfolio projects and outreach.', date: '2026-08-22', quote: 'Morning deep work was uninterrupted.' }
-    ],
-    manualNotes: '### Core Career Principles\n- Focus on high-leverage skills (distributed systems, agentic architectures).\n- Treat interview preparation as an active daily workout.'
+    realizations: [],
+    solutions: [],
+    manualNotes: '### Core Career Principles\n- Focus on high-leverage skills and systems design.\n- Treat interview preparation as an active daily workout.'
   },
   {
     id: 'gym',
     name: 'Gym & Fitness Consistency',
     icon: '🏋️',
     isDefault: true,
-    realizations: [
-      { id: 'g1', text: 'Consistency outperforms intensity: Showing up 4 times a week steadily compounds far more than burning out.', date: '2026-08-21', quote: 'Felt energized without pushing into injury.' }
-    ],
-    solutions: [
-      { id: 'gs1', text: 'Pack gym bag and lay out workout clothes the night before to eliminate morning friction.', date: '2026-08-23', quote: 'Zero morning friction when bag was ready.' }
-    ],
+    realizations: [],
+    solutions: [],
     manualNotes: '### Fitness Systems & Rules\n- 4 gym sessions weekly: Push, Pull, Legs, Upper.\n- 8 hours of sleep is non-negotiable for recovery.'
   },
   {
@@ -1363,12 +1356,8 @@ const DEFAULT_PILLARS = [
     name: 'Dreams & Big Ambitions',
     icon: '🚀',
     isDefault: true,
-    realizations: [
-      { id: 'd1', text: 'Building in public creates momentum and accountability that private ideation cannot match.', date: '2026-08-22', quote: 'Sharing updates kept me motivated.' }
-    ],
-    solutions: [
-      { id: 'ds1', text: 'Ship a small working MVP before optimizing or adding complex secondary features.', date: '2026-08-24', quote: 'Focusing on the core feature shipped the app in 2 days.' }
-    ],
+    realizations: [],
+    solutions: [],
     manualNotes: '### Ambition Roadmap\n- Build high-utility AI tools that empower daily mindful living.\n- Prioritize craftsmanship, privacy-first design, and speed.'
   },
   {
@@ -1376,12 +1365,8 @@ const DEFAULT_PILLARS = [
     name: 'Meaningful Relationships',
     icon: '🤝',
     isDefault: true,
-    realizations: [
-      { id: 'r1', text: 'Active listening without giving unsolicited advice builds the deepest mutual trust.', date: '2026-08-19', quote: 'She appreciated me just listening.' }
-    ],
-    solutions: [
-      { id: 'rs1', text: 'Schedule a recurring weekly call with close friends and family to stay connected.', date: '2026-08-21', quote: 'Great Sunday catch-up call.' }
-    ],
+    realizations: [],
+    solutions: [],
     manualNotes: '### Relationship Standards\n- Be fully present: No phones during dinner or quality conversations.\n- Express gratitude and appreciation openly and often.'
   }
 ];
@@ -1395,6 +1380,12 @@ function loadLifePillars() {
     const raw = localStorage.getItem(PILLARS_KEY);
     if (raw) {
       lifePillars = JSON.parse(raw);
+      // Clean out any legacy mock sample IDs
+      const mockIds = new Set(['c1', 'cs1', 'g1', 'gs1', 'd1', 'ds1', 'dr1', 'r1', 'rs1']);
+      lifePillars.forEach(p => {
+        if (p.realizations) p.realizations = p.realizations.filter(r => !mockIds.has(r.id));
+        if (p.solutions) p.solutions = p.solutions.filter(s => !mockIds.has(s.id));
+      });
     } else {
       lifePillars = DEFAULT_PILLARS;
       saveLifePillars();
@@ -2328,10 +2319,29 @@ function renderMarkdown(md) {
 function renderEntriesList() {
   const container = byId('entriesList');
   const heading = byId('sidebarListHeading');
+  const clearDateBtn = byId('clearDateFilter');
   if (!container) return;
 
+  if (clearDateBtn) {
+    if (activeDateFilter) {
+      clearDateBtn.classList.remove('hidden');
+      clearDateBtn.innerHTML = `&#10005; ${formatShortDate(activeDateFilter)}`;
+      clearDateBtn.onclick = () => {
+        activeDateFilter = null;
+        renderEntriesList();
+        renderCalendar();
+      };
+    } else {
+      clearDateBtn.classList.add('hidden');
+    }
+  }
+
   if (heading) {
-    heading.textContent = sidebarView === 'analysis' ? 'Topic & Analysis Files (.md)' : 'Journal Entries';
+    if (sidebarView === 'analysis') {
+      heading.textContent = activeDateFilter ? `Analysis for ${formatShortDate(activeDateFilter)}` : 'Topic & Analysis Files (.md)';
+    } else {
+      heading.textContent = activeDateFilter ? `Entries for ${formatShortDate(activeDateFilter)}` : 'Journal Entries';
+    }
   }
 
   const q = searchQuery.toLowerCase();
@@ -2386,10 +2396,11 @@ function renderEntriesList() {
     const dailyHeading = document.createElement('div');
     dailyHeading.className = 'sidebar-sub-heading';
     dailyHeading.style.marginTop = '12px';
-    dailyHeading.innerHTML = `<span>✨ Daily Analysis Reflections</span>`;
+    dailyHeading.innerHTML = `<span>✨ ${activeDateFilter ? `${formatShortDate(activeDateFilter)} Analysis Reflection` : 'Daily Analysis Reflections'}</span>`;
     container.appendChild(dailyHeading);
 
     let filteredEntries = entries.filter(e =>
+      (!activeDateFilter || getEntryDate(e) === activeDateFilter) &&
       (!q || (e.title || '').toLowerCase().includes(q) || (e.content || '').toLowerCase().includes(q)) &&
       (!activeTopicFilter || (e.topics || []).some(t => t.topic === activeTopicFilter))
     );
@@ -2399,7 +2410,7 @@ function renderEntriesList() {
       emptyDiv.style.padding = '8px 10px';
       emptyDiv.style.fontSize = '0.74rem';
       emptyDiv.style.color = 'var(--text-muted)';
-      emptyDiv.textContent = 'No daily entries found.';
+      emptyDiv.textContent = activeDateFilter ? `No analysis found for ${formatShortDate(activeDateFilter)}.` : 'No daily entries found.';
       container.appendChild(emptyDiv);
       return;
     }
@@ -2455,13 +2466,14 @@ function renderEntriesList() {
 
   // Normal Journal Entries List
   let filtered = entries.filter(e =>
+    (!activeDateFilter || getEntryDate(e) === activeDateFilter) &&
     (!q || (e.title || '').toLowerCase().includes(q) || (e.content || '').toLowerCase().includes(q) || (e.subtopics || []).some(s => s.toLowerCase().includes(q))) &&
     (!activeTopicFilter || (e.topics || []).some(t => t.topic === activeTopicFilter))
   );
 
   container.innerHTML = '';
   if (filtered.length === 0) {
-    container.innerHTML = `<div style="padding:16px;text-align:center;font-size:.78rem;color:var(--text-muted)">No entries found</div>`;
+    container.innerHTML = `<div style="padding:16px;text-align:center;font-size:.78rem;color:var(--text-muted)">${activeDateFilter ? `No entries found for ${formatShortDate(activeDateFilter)}` : 'No entries found'}</div>`;
     return;
   }
 
@@ -2514,7 +2526,7 @@ function renderCalendar() {
   calTitle.textContent = calViewDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
   const activeEntry = getEntry(currentId);
-  const activeDate = activeEntry ? getEntryDate(activeEntry) : null;
+  const activeDate = activeDateFilter || (activeEntry ? getEntryDate(activeEntry) : null);
 
   const entryDates = new Set(entries.map(e => getEntryDate(e)).filter(Boolean));
   const firstDay   = new Date(year, month, 1);
@@ -2539,11 +2551,15 @@ function renderCalendar() {
   calGrid.querySelectorAll('.cal-day:not(.empty)').forEach(cell => {
     cell.addEventListener('click', () => {
       const dateStr = cell.dataset.date;
+      if (activeDateFilter === dateStr) {
+        activeDateFilter = null;
+      } else {
+        activeDateFilter = dateStr;
+      }
+
       const dayEntries = entries.filter(e => getEntryDate(e) === dateStr);
       if (dayEntries.length > 0) {
         loadEntry(dayEntries[0].id);
-        const itemEl = document.querySelector(`.entry-item[data-id="${dayEntries[0].id}"]`);
-        if (itemEl) itemEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       } else {
         const now = new Date();
         const [y, m, d] = dateStr.split('-').map(Number);
@@ -2565,6 +2581,8 @@ function renderCalendar() {
         loadEntry(newEntry.id);
         byId('entryTitle')?.focus();
       }
+      renderEntriesList();
+      renderCalendar();
     });
   });
 }

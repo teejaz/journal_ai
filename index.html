@@ -59,7 +59,10 @@
     <!-- Entries List Heading Row -->
     <div class="entries-label-row">
       <span class="entries-label" id="sidebarListHeading">Journal Entries</span>
-      <span class="clear-topic-filter hidden" id="clearTopicFilter">&#10005; clear filter</span>
+      <div style="display:flex;gap:4px">
+        <span class="clear-topic-filter hidden" id="clearDateFilter">&#10005; clear date</span>
+        <span class="clear-topic-filter hidden" id="clearTopicFilter">&#10005; clear topic</span>
+      </div>
     </div>
     <div class="entries-list" id="entriesList"></div>
   </aside>
