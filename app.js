@@ -86,6 +86,8 @@ let previewMode       = false;
 let activeTopicFilter = null;
 let selectedProvider  = 'gemini';
 
+const DEFAULT_SYSTEM_PROMPT = 'You are an empathetic, insightful executive life coach and journaling mentor. Help the author extract clarity, uncover root causes, celebrate wins, cultivate strong personal discipline, and discover actionable next steps.';
+
 let aiConfig = {
   provider:      'gemini',
   geminiKey:     '',
@@ -94,9 +96,10 @@ let aiConfig = {
   openaiModel:   'gpt-4o-mini',
   ollamaUrl:     'http://localhost:11434',
   ollamaModel:   'llama3',
-  llamacppUrl:   'http://localhost:8080',
-  llamacppModel: 'default',
-  llamacppKey:   ''
+  llamacppUrl:   'http://localhost:9931',
+  llamacppModel: 'ggml-org/gemma-4-E4B-it-GGUF:Q8_0',
+  llamacppKey:   '',
+  systemPrompt:  DEFAULT_SYSTEM_PROMPT
 };
 
 // Safe DOM Helper
@@ -813,6 +816,7 @@ Respond ONLY with valid JSON with this exact structure:
 async function generateTextWithAI(promptInstruction, content) {
   if (!content || !content.trim()) throw new Error('Journal entry is empty. Write something first.');
 
+  const systemPrompt = aiConfig.systemPrompt || DEFAULT_SYSTEM_PROMPT;
   const fullPrompt = `${promptInstruction}\n\nJournal Entry:\n---\n${content.slice(0, 5000)}\n---`;
 
   if (aiConfig.provider === 'gemini') {
@@ -823,6 +827,7 @@ async function generateTextWithAI(promptInstruction, content) {
 
     const body = {
       contents: [{ parts: [{ text: fullPrompt }] }],
+      systemInstruction: { parts: [{ text: systemPrompt }] },
       generationConfig: { temperature: 0.3, maxOutputTokens: 1500 }
     };
 
@@ -851,9 +856,16 @@ async function generateTextWithAI(promptInstruction, content) {
     const model = aiConfig.openaiModel || 'gpt-4o-mini';
     const isReasoning = model.startsWith('o1') || model.startsWith('o3');
 
+    const messages = isReasoning
+      ? [{ role: 'user', content: `[SYSTEM INSTRUCTIONS]: ${systemPrompt}\n\n${fullPrompt}` }]
+      : [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: fullPrompt }
+        ];
+
     const body = {
       model,
-      messages: [{ role: 'user', content: fullPrompt }]
+      messages
     };
     if (isReasoning) {
       body.max_completion_tokens = 1500;
@@ -885,7 +897,10 @@ async function generateTextWithAI(promptInstruction, content) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: aiConfig.ollamaModel || 'llama3',
-        messages: [{ role: 'user', content: fullPrompt }],
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: fullPrompt }
+        ],
         stream: false,
         options: { temperature: 0.3 }
       })
@@ -904,7 +919,10 @@ async function generateTextWithAI(promptInstruction, content) {
     if (aiConfig.llamacppKey) headers['Authorization'] = `Bearer ${aiConfig.llamacppKey}`;
 
     const body = {
-      messages: [{ role: 'user', content: fullPrompt }],
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: fullPrompt }
+      ],
       temperature: 0.3
     };
     if (aiConfig.llamacppModel && aiConfig.llamacppModel !== 'default') {
@@ -975,6 +993,9 @@ function openAiSettings() {
   if (lcUrl)  lcUrl.value  = aiConfig.llamacppUrl || 'http://localhost:8080';
   if (lcKey)  lcKey.value  = aiConfig.llamacppKey || '';
   if (lcMod)  lcMod.value  = aiConfig.llamacppModel || 'default';
+
+  const sysPromptEl = byId('aiSystemPrompt');
+  if (sysPromptEl) sysPromptEl.value = aiConfig.systemPrompt || DEFAULT_SYSTEM_PROMPT;
 
   // If Gemini key is saved, auto-fetch supported models
   if (aiConfig.geminiKey) {
@@ -1097,6 +1118,8 @@ async function testAiConnection() {
   const lcCustom = byId('llamacppModel');
   const lcModel  = lcCustom?.value.trim() || lcSelect?.value || 'ggml-org/gemma-4-E4B-it-GGUF:Q8_0';
 
+  const sysPrompt = byId('aiSystemPrompt')?.value.trim() || DEFAULT_SYSTEM_PROMPT;
+
   // Apply to config for testing
   aiConfig.provider      = selectedProvider;
   aiConfig.geminiKey     = gKey;
@@ -1108,6 +1131,7 @@ async function testAiConnection() {
   aiConfig.llamacppUrl   = lcUrl;
   aiConfig.llamacppKey   = lcKey;
   aiConfig.llamacppModel = lcModel;
+  aiConfig.systemPrompt  = sysPrompt;
 
   if (selectedProvider === 'none') {
     updateAiStatus('idle', 'Local keyword matching selected');
@@ -1145,6 +1169,8 @@ function saveAiSettingsHandler() {
   const lcCustom = byId('llamacppModel');
   const lcModel  = lcCustom?.value.trim() || lcSelect?.value || 'ggml-org/gemma-4-E4B-it-GGUF:Q8_0';
 
+  const sysPrompt = byId('aiSystemPrompt')?.value.trim() || DEFAULT_SYSTEM_PROMPT;
+
   aiConfig.provider      = selectedProvider;
   aiConfig.geminiKey     = byId('geminiKey')?.value.trim() || '';
   aiConfig.geminiModel   = byId('geminiModel')?.value || 'gemini-3.6-flash';
@@ -1155,6 +1181,7 @@ function saveAiSettingsHandler() {
   aiConfig.llamacppUrl   = byId('llamacppUrl')?.value.trim() || 'http://localhost:9931';
   aiConfig.llamacppKey   = byId('llamacppKey')?.value.trim() || '';
   aiConfig.llamacppModel = lcModel;
+  aiConfig.systemPrompt  = sysPrompt;
 
   saveAiConfig();
   updateAiStatus();
@@ -2616,6 +2643,10 @@ Folio is your personal, private journaling space. Everything saves automatically
 
   byId('testAiBtn')?.addEventListener('click', testAiConnection);
   byId('saveAiSettings')?.addEventListener('click', saveAiSettingsHandler);
+  byId('resetSystemPrompt')?.addEventListener('click', () => {
+    const el = byId('aiSystemPrompt');
+    if (el) el.value = DEFAULT_SYSTEM_PROMPT;
+  });
 
     byId('geminiModelHint')?.addEventListener('click', async () => {
     const key = byId('geminiKey')?.value.trim() || aiConfig.geminiKey;

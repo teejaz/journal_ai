@@ -490,6 +490,16 @@
       </div>
     </div>
 
+    <!-- System Prompt / Persona Instructions -->
+    <div class="ai-field-group" style="margin-top:16px;border-top:1px solid var(--border);padding-top:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <label class="ai-label" style="margin-bottom:0">Custom System Prompt / AI Persona</label>
+        <span class="ai-hint" id="resetSystemPrompt" style="font-size:0.68rem;color:var(--accent);cursor:pointer">↺ Reset to Default</span>
+      </div>
+      <textarea id="aiSystemPrompt" class="ai-input" rows="3" style="resize:vertical;font-family:var(--font-ui);line-height:1.5;font-size:0.8rem" placeholder="Define persona, tone of voice, or specific rules for the AI (e.g. 'Act as a direct, Stoic performance coach. Emphasize practical next steps and radical honesty.')..."></textarea>
+      <span class="ai-hint">This persona guides all AI analysis, coaching, reflection lenses, and life pillar extractions.</span>
+    </div>
+
     <!-- Connection Status & Actions -->
     <div class="ai-status-row">
       <span class="ai-status-dot" id="aiStatusDot"></span>
