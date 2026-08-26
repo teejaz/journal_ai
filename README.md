@@ -29,9 +29,10 @@ open index.html
 
 Click the **⚙ (AI Settings)** icon in the top navigation bar:
 
-- **Google Gemini**: Enter your free [Google AI Studio](https://aistudio.google.com) key (default: `gemini-3.6-flash`).
-- **OpenAI**: Enter your [OpenAI API Key](https://platform.openai.com/api-keys) (`gpt-4o-mini`).
-- **Local Ollama**: Start Ollama with CORS allowed (`OLLAMA_ORIGINS="*" ollama serve`) and click **⚡ Auto-detect local models**.
+- **Google Gemini**: Free [Google AI Studio](https://aistudio.google.com) key (`gemini-3.6-flash`, `gemini-3.7-flash` with auto-detect).
+- **OpenAI**: [OpenAI API Key](https://platform.openai.com/api-keys) (`gpt-4o-mini`, `gpt-4o`, `o3-mini`, `o1`, `gpt-4.5` with auto-detect).
+- **Local Ollama**: Start with CORS allowed (`OLLAMA_ORIGINS="*" ollama serve`) & auto-detect installed models.
+- **llama.cpp / Local Server**: Connect to `http://localhost:8080` (or LM Studio / LocalAI) with model auto-detection.
 - **Offline / Built-in**: Switch to **Off** for zero-dependency local keyword extraction.
 
 ---

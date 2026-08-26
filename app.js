@@ -87,13 +87,16 @@ let activeTopicFilter = null;
 let selectedProvider  = 'gemini';
 
 let aiConfig = {
-  provider:    'gemini',
-  geminiKey:   '',
-  geminiModel: 'gemini-3.6-flash',
-  openaiKey:   '',
-  openaiModel: 'gpt-4o-mini',
-  ollamaUrl:   'http://localhost:11434',
-  ollamaModel: 'llama3'
+  provider:      'gemini',
+  geminiKey:     '',
+  geminiModel:   'gemini-3.6-flash',
+  openaiKey:     '',
+  openaiModel:   'gpt-4o-mini',
+  ollamaUrl:     'http://localhost:11434',
+  ollamaModel:   'llama3',
+  llamacppUrl:   'http://localhost:8080',
+  llamacppModel: 'default',
+  llamacppKey:   ''
 };
 
 // Safe DOM Helper
@@ -409,7 +412,6 @@ async function callGemini(content) {
         const err = await res.json().catch(() => ({}));
         const msg = err.error?.message || `HTTP ${res.status}`;
         lastError = new Error(msg);
-        // Only try next candidate if model was not found
         if (!msg.toLowerCase().includes('not found') && !msg.toLowerCase().includes('is not supported')) {
           throw lastError;
         }
@@ -425,18 +427,87 @@ async function callGemini(content) {
   throw lastError || new Error('Failed to generate content with Gemini');
 }
 
+async function fetchOpenAIModels(apiKey) {
+  if (!apiKey) return [];
+  try {
+    const res = await fetch('https://api.openai.com/v1/models', {
+      headers: { 'Authorization': `Bearer ${apiKey}` }
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.data || [])
+      .map(m => m.id)
+      .filter(id => (id.startsWith('gpt-') || id.startsWith('o1') || id.startsWith('o3') || id.startsWith('chatgpt')) && !id.includes('realtime') && !id.includes('audio') && !id.includes('transcription'))
+      .sort((a,b) => a.localeCompare(b));
+  } catch(e) {
+    return [];
+  }
+}
+
+function updateOpenAIModelDropdown(models, currentVal) {
+  const select = byId('openaiModel');
+  const customInput = byId('openaiCustomModel');
+  if (!select) return;
+
+  const activeModel = currentVal || aiConfig.openaiModel || 'gpt-4o-mini';
+
+  if (!models || models.length === 0) {
+    const defaults = ['gpt-4o-mini', 'gpt-4o', 'o3-mini', 'o1', 'o1-mini', 'gpt-4.5-preview', 'chatgpt-4o-latest'];
+    select.innerHTML = defaults.map(m => `<option value="${m}" ${m === activeModel ? 'selected' : ''}>${m}</option>`).join('') + `<option value="custom" ${!defaults.includes(activeModel) ? 'selected' : ''}>-- Custom Model Name --</option>`;
+    if (defaults.includes(activeModel)) {
+      select.value = activeModel;
+      if (customInput) customInput.classList.add('hidden');
+    } else {
+      select.value = 'custom';
+      if (customInput) {
+        customInput.classList.remove('hidden');
+        customInput.value = activeModel;
+      }
+    }
+    return;
+  }
+
+  const modelOptions = models.map(m => `
+    <option value="${m}" ${m === activeModel ? 'selected' : ''}>${m}</option>
+  `).join('') + `<option value="custom" ${!models.includes(activeModel) ? 'selected' : ''}>-- Custom Model Name --</option>`;
+
+  select.innerHTML = modelOptions;
+
+  if (models.includes(activeModel)) {
+    select.value = activeModel;
+    if (customInput) customInput.classList.add('hidden');
+  } else {
+    select.value = 'custom';
+    if (customInput) {
+      customInput.classList.remove('hidden');
+      customInput.value = activeModel;
+    }
+  }
+}
+
 async function callOpenAI(content) {
   if (!aiConfig.openaiKey) throw new Error('Please enter an OpenAI API Key in Settings ⚙');
+  
+  const modelName = aiConfig.openaiModel || 'gpt-4o-mini';
+  const body = {
+    model: modelName,
+    messages: [{ role: 'user', content: AI_PROMPT(content) }],
+    temperature: 0.2
+  };
+  
+  // o1 / o3 series use max_completion_tokens and do not support custom temperature
+  if (modelName.startsWith('o1') || modelName.startsWith('o3')) {
+    body.max_completion_tokens = 1024;
+    delete body.temperature;
+  } else {
+    body.max_tokens = 1024;
+    body.response_format = { type: 'json_object' };
+  }
+
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${aiConfig.openaiKey}` },
-    body: JSON.stringify({
-      model: aiConfig.openaiModel,
-      messages: [{ role: 'user', content: AI_PROMPT(content) }],
-      temperature: 0.2,
-      max_tokens: 512,
-      response_format: { type: 'json_object' }
-    })
+    body: JSON.stringify(body)
   });
   if (!res.ok) {
     let msg = `OpenAI HTTP ${res.status}`;
@@ -542,13 +613,111 @@ async function callOllama(content) {
   }
 }
 
+// ─── LLAMA.CPP / LOCAL OPENAI-COMPATIBLE CALLER ──────────────────────────────
+async function fetchLlamaCppModels(baseUrl = 'http://localhost:8080', apiKey = '') {
+  const cleanUrl = (baseUrl || 'http://localhost:8080').replace(/\/$/, '');
+  const headers = {};
+  if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+  try {
+    const res = await fetch(`${cleanUrl}/v1/models`, { headers });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.data || []).map(m => m.id || m.name || m);
+  } catch(e) {
+    return [];
+  }
+}
+
+function updateLlamaCppModelDropdown(models, currentVal) {
+  const select = byId('llamacppModelSelect');
+  const customInput = byId('llamacppModel');
+  if (!select) return;
+
+  const activeModel = currentVal || aiConfig.llamacppModel || 'default';
+
+  if (!models || models.length === 0) {
+    select.innerHTML = `
+      <option value="default">default (Active Server Model)</option>
+      <option value="custom">-- Custom Model ID --</option>
+    `;
+    if (activeModel === 'default') {
+      select.value = 'default';
+      if (customInput) customInput.classList.add('hidden');
+    } else {
+      select.value = 'custom';
+      if (customInput) {
+        customInput.classList.remove('hidden');
+        customInput.value = activeModel;
+      }
+    }
+    return;
+  }
+
+  const opts = models.map(m => `<option value="${m}" ${m === activeModel ? 'selected' : ''}>${m}</option>`).join('') + `<option value="custom" ${!models.includes(activeModel) ? 'selected' : ''}>-- Custom Model ID --</option>`;
+  select.innerHTML = opts;
+  if (models.includes(activeModel)) {
+    select.value = activeModel;
+    if (customInput) customInput.classList.add('hidden');
+  } else {
+    select.value = 'custom';
+    if (customInput) {
+      customInput.classList.remove('hidden');
+      customInput.value = activeModel;
+    }
+  }
+}
+
+async function callLlamaCpp(content) {
+  const baseUrl = (aiConfig.llamacppUrl || 'http://localhost:8080').replace(/\/$/, '');
+  const url = `${baseUrl}/v1/chat/completions`;
+  const headers = { 'Content-Type': 'application/json' };
+  if (aiConfig.llamacppKey) headers['Authorization'] = `Bearer ${aiConfig.llamacppKey}`;
+
+  const body = {
+    model: (aiConfig.llamacppModel && aiConfig.llamacppModel !== 'default') ? aiConfig.llamacppModel : undefined,
+    messages: [{ role: 'user', content: AI_PROMPT(content) }],
+    temperature: 0.2,
+    max_tokens: 1024,
+    response_format: { type: 'json_object' }
+  };
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+      // If response_format is rejected by older llama-server, retry without it
+      if (res.status === 400) {
+        delete body.response_format;
+        const retryRes = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+        if (retryRes.ok) {
+          const data = await retryRes.json();
+          return cleanJsonResponse(data.choices?.[0]?.message?.content || '');
+        }
+      }
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error?.message || err.error || `llama.cpp HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    return cleanJsonResponse(data.choices?.[0]?.message?.content || '');
+  } catch (e) {
+    if (e.message === 'Failed to fetch' || e.name === 'TypeError') {
+      throw new Error(`Cannot connect to llama.cpp server at ${baseUrl}. Ensure server is running with CORS enabled.`);
+    }
+    throw e;
+  }
+}
+
 async function analyzeWithAI(content) {
   if (!content.trim() || countWords(content) < 3) return null;
   switch (aiConfig.provider) {
-    case 'gemini': return await callGemini(content);
-    case 'openai': return await callOpenAI(content);
-    case 'ollama': return await callOllama(content);
-    default:       return null;
+    case 'gemini':   return await callGemini(content);
+    case 'openai':   return await callOpenAI(content);
+    case 'ollama':   return await callOllama(content);
+    case 'llamacpp': return await callLlamaCpp(content);
+    default:         return null;
   }
 }
 
@@ -563,13 +732,18 @@ function openAiSettings() {
   const oModel = byId('openaiModel');
   const lUrl   = byId('ollamaUrl');
   const lModel = byId('ollamaModel');
+  const lcUrl  = byId('llamacppUrl');
+  const lcKey  = byId('llamacppKey');
+  const lcMod  = byId('llamacppModel');
 
   if (gKey)   gKey.value   = aiConfig.geminiKey || '';
   if (gModel) gModel.value = aiConfig.geminiModel || 'gemini-3.6-flash';
   if (oKey)   oKey.value   = aiConfig.openaiKey || '';
-  if (oModel) oModel.value = aiConfig.openaiModel || 'gpt-4o-mini';
   if (lUrl)   lUrl.value   = aiConfig.ollamaUrl || 'http://localhost:11434';
   if (lModel) lModel.value = aiConfig.ollamaModel || 'llama3';
+  if (lcUrl)  lcUrl.value  = aiConfig.llamacppUrl || 'http://localhost:8080';
+  if (lcKey)  lcKey.value  = aiConfig.llamacppKey || '';
+  if (lcMod)  lcMod.value  = aiConfig.llamacppModel || 'default';
 
   // If Gemini key is saved, auto-fetch supported models
   if (aiConfig.geminiKey) {
@@ -578,11 +752,26 @@ function openAiSettings() {
     });
   }
 
+  // If OpenAI key is saved, auto-fetch supported models
+  updateOpenAIModelDropdown([], aiConfig.openaiModel);
+  if (aiConfig.openaiKey) {
+    fetchOpenAIModels(aiConfig.openaiKey).then(models => {
+      if (models && models.length > 0) updateOpenAIModelDropdown(models, aiConfig.openaiModel);
+    });
+  }
+
   // Pre-fetch Ollama models
   fetchOllamaModels(aiConfig.ollamaUrl || 'http://localhost:11434').then(models => {
     updateOllamaModelDropdown(models, aiConfig.ollamaModel);
   }).catch(() => {
     updateOllamaModelDropdown([], aiConfig.ollamaModel);
+  });
+
+  // Pre-fetch llama.cpp models
+  fetchLlamaCppModels(aiConfig.llamacppUrl || 'http://localhost:8080', aiConfig.llamacppKey).then(models => {
+    updateLlamaCppModelDropdown(models, aiConfig.llamacppModel);
+  }).catch(() => {
+    updateLlamaCppModelDropdown([], aiConfig.llamacppModel);
   });
 
   switchAiTab(selectedProvider);
@@ -598,8 +787,14 @@ function switchAiTab(provider) {
     t.classList.toggle('active', t.dataset.provider === provider);
   });
 
-  const panelMap = { gemini: 'panelGemini', openai: 'panelOpenAI', ollama: 'panelOllama', none: 'panelNone' };
-  ['panelGemini', 'panelOpenAI', 'panelOllama', 'panelNone'].forEach(id => {
+  const panelMap = {
+    gemini:   'panelGemini',
+    openai:   'panelOpenAI',
+    ollama:   'panelOllama',
+    llamacpp: 'panelLlamaCpp',
+    none:     'panelNone'
+  };
+  ['panelGemini', 'panelOpenAI', 'panelOllama', 'panelLlamaCpp', 'panelNone'].forEach(id => {
     const el = byId(id);
     if (el) el.classList.add('hidden');
   });
@@ -637,11 +832,13 @@ function updateAiStatus(state = 'idle', customMsg = '') {
     text.textContent = 'AI features disabled — using keyword matching';
   } else if ((aiConfig.provider === 'gemini' && aiConfig.geminiKey) ||
              (aiConfig.provider === 'openai' && aiConfig.openaiKey) ||
-             (aiConfig.provider === 'ollama')) {
+             (aiConfig.provider === 'ollama') ||
+             (aiConfig.provider === 'llamacpp')) {
     dot.classList.add('ok');
-    text.textContent = `${aiConfig.provider} configured (${aiConfig[aiConfig.provider + 'Model'] || ''})`;
+    const mod = aiConfig[aiConfig.provider + 'Model'] || '';
+    text.textContent = `${aiConfig.provider} configured ${mod ? `(${mod})` : ''}`;
   } else {
-    text.textContent = 'Not configured — enter API key';
+    text.textContent = 'Not configured — enter API key / URL';
   }
 }
 
@@ -652,21 +849,33 @@ async function testAiConnection() {
   const gKey   = byId('geminiKey')?.value.trim() || '';
   const gModel = byId('geminiModel')?.value || 'gemini-3.6-flash';
   const oKey   = byId('openaiKey')?.value.trim() || '';
-  const oModel = byId('openaiModel')?.value || 'gpt-4o-mini';
-  const lUrl   = byId('ollamaUrl')?.value.trim() || 'http://localhost:11434';
   
+  const oSelect = byId('openaiModel');
+  const oCustom = byId('openaiCustomModel');
+  const oModel = (oSelect?.value === 'custom' ? oCustom?.value.trim() : oSelect?.value) || oCustom?.value.trim() || 'gpt-4o-mini';
+
+  const lUrl   = byId('ollamaUrl')?.value.trim() || 'http://localhost:11434';
   const ollamaSelect = byId('ollamaModelSelect');
   const ollamaCustom = byId('ollamaModel');
   const lModel = (ollamaSelect?.value === 'custom' ? ollamaCustom?.value.trim() : ollamaSelect?.value) || ollamaCustom?.value.trim() || 'llama3';
 
+  const lcUrl   = byId('llamacppUrl')?.value.trim() || 'http://localhost:8080';
+  const lcKey   = byId('llamacppKey')?.value.trim() || '';
+  const lcSelect = byId('llamacppModelSelect');
+  const lcCustom = byId('llamacppModel');
+  const lcModel = (lcSelect?.value === 'custom' ? lcCustom?.value.trim() : lcSelect?.value) || lcCustom?.value.trim() || 'default';
+
   // Apply to config for testing
-  aiConfig.provider    = selectedProvider;
-  aiConfig.geminiKey   = gKey;
-  aiConfig.geminiModel = gModel;
-  aiConfig.openaiKey   = oKey;
-  aiConfig.openaiModel = oModel;
-  aiConfig.ollamaUrl   = lUrl;
-  aiConfig.ollamaModel = lModel;
+  aiConfig.provider      = selectedProvider;
+  aiConfig.geminiKey     = gKey;
+  aiConfig.geminiModel   = gModel;
+  aiConfig.openaiKey     = oKey;
+  aiConfig.openaiModel   = oModel;
+  aiConfig.ollamaUrl     = lUrl;
+  aiConfig.ollamaModel   = lModel;
+  aiConfig.llamacppUrl   = lcUrl;
+  aiConfig.llamacppKey   = lcKey;
+  aiConfig.llamacppModel = lcModel;
 
   if (selectedProvider === 'none') {
     updateAiStatus('idle', 'Local keyword matching selected');
@@ -680,7 +889,8 @@ async function testAiConnection() {
 
     if (result && result.topics) {
       saveAiConfig();
-      updateAiStatus('ok', `✓ Success! Connected to ${selectedProvider} (${aiConfig[selectedProvider + 'Model'] || ''})`);
+      const currentMod = aiConfig[selectedProvider + 'Model'] || '';
+      updateAiStatus('ok', `✓ Success! Connected to ${selectedProvider} ${currentMod ? `(${currentMod})` : ''}`);
       updateAiBtnLabel();
     } else {
       updateAiStatus('error', 'Connected but got unexpected response format');
@@ -691,24 +901,35 @@ async function testAiConnection() {
 }
 
 function saveAiSettingsHandler() {
+  const oSelect = byId('openaiModel');
+  const oCustom = byId('openaiCustomModel');
+  const oModel = (oSelect?.value === 'custom' ? oCustom?.value.trim() : oSelect?.value) || oCustom?.value.trim() || 'gpt-4o-mini';
+
   const ollamaSelect = byId('ollamaModelSelect');
   const ollamaCustom = byId('ollamaModel');
   const lModel = (ollamaSelect?.value === 'custom' ? ollamaCustom?.value.trim() : ollamaSelect?.value) || ollamaCustom?.value.trim() || 'llama3';
 
-  aiConfig.provider    = selectedProvider;
-  aiConfig.geminiKey   = byId('geminiKey')?.value.trim() || '';
-  aiConfig.geminiModel = byId('geminiModel')?.value || 'gemini-3.6-flash';
-  aiConfig.openaiKey   = byId('openaiKey')?.value.trim() || '';
-  aiConfig.openaiModel = byId('openaiModel')?.value || 'gpt-4o-mini';
-  aiConfig.ollamaUrl   = byId('ollamaUrl')?.value.trim() || 'http://localhost:11434';
-  aiConfig.ollamaModel = lModel;
+  const lcSelect = byId('llamacppModelSelect');
+  const lcCustom = byId('llamacppModel');
+  const lcModel = (lcSelect?.value === 'custom' ? lcCustom?.value.trim() : lcSelect?.value) || lcCustom?.value.trim() || 'default';
+
+  aiConfig.provider      = selectedProvider;
+  aiConfig.geminiKey     = byId('geminiKey')?.value.trim() || '';
+  aiConfig.geminiModel   = byId('geminiModel')?.value || 'gemini-3.6-flash';
+  aiConfig.openaiKey     = byId('openaiKey')?.value.trim() || '';
+  aiConfig.openaiModel   = oModel;
+  aiConfig.ollamaUrl     = byId('ollamaUrl')?.value.trim() || 'http://localhost:11434';
+  aiConfig.ollamaModel   = lModel;
+  aiConfig.llamacppUrl   = byId('llamacppUrl')?.value.trim() || 'http://localhost:8080';
+  aiConfig.llamacppKey   = byId('llamacppKey')?.value.trim() || '';
+  aiConfig.llamacppModel = lcModel;
 
   saveAiConfig();
   updateAiStatus();
   updateAiBtnLabel();
 
   const modal = byId('aiSettingsModal');
-  if (modal) modal.classList.add('hidden');
+  if (modal) modal.classList.remove('hidden');
 }
 
 function updateAiBtnLabel() {
@@ -716,9 +937,8 @@ function updateAiBtnLabel() {
   if (!btn) return;
   const lbl = btn.querySelector('.ai-btn-label');
   if (!lbl) return;
-  const providerShort = { gemini:'Gemini', openai:'OpenAI', ollama:'Ollama', none:'' };
+  const providerShort = { gemini:'Gemini', openai:'OpenAI', ollama:'Ollama', llamacpp:'llama.cpp', none:'' };
   const label = providerShort[aiConfig.provider] || '';
-  lbl.textContent = label ? `Analyze · ${label}` : 'Analyze';
 }
 
 // ─── ENTRY CRUD & RENDER ──────────────────────────────────────────────────────
@@ -1594,6 +1814,34 @@ Folio is your personal, private journaling space. Everything saves automatically
     }
   });
 
+  // OpenAI Select & Auto-detect
+  byId('openaiModel')?.addEventListener('change', e => {
+    const customInput = byId('openaiCustomModel');
+    if (e.target.value === 'custom') {
+      customInput?.classList.remove('hidden');
+      customInput?.focus();
+    } else {
+      customInput?.classList.add('hidden');
+    }
+  });
+
+  byId('openaiModelHint')?.addEventListener('click', async () => {
+    const key = byId('openaiKey')?.value.trim() || aiConfig.openaiKey;
+    if (!key) { alert('Please enter your OpenAI API key first'); return; }
+    const hint = byId('openaiModelHint');
+    if (hint) hint.textContent = '⏳ Fetching models...';
+    const models = await fetchOpenAIModels(key);
+    if (models && models.length > 0) {
+      updateOpenAIModelDropdown(models, byId('openaiModel')?.value);
+      if (hint) hint.textContent = `✓ Found ${models.length} models`;
+      setTimeout(() => { if (hint) hint.textContent = '⚡ Auto-detect models'; }, 3000);
+    } else {
+      if (hint) hint.textContent = '✗ Could not fetch models';
+      setTimeout(() => { if (hint) hint.textContent = '⚡ Auto-detect models'; }, 3000);
+    }
+  });
+
+  // Ollama Select & Auto-detect
   byId('ollamaModelSelect')?.addEventListener('change', e => {
     const customInput = byId('ollamaModel');
     if (e.target.value === 'custom') {
@@ -1621,6 +1869,38 @@ Folio is your personal, private journaling space. Everything saves automatically
     } catch(err) {
       alert(`Could not fetch Ollama models:\n\n${err.message}\n\nMake sure Ollama is running and allows browser requests:\nRun in Terminal: OLLAMA_ORIGINS="*" ollama serve`);
       if (hint) hint.textContent = '⚡ Auto-detect local models';
+    }
+  });
+
+  // llama.cpp Select & Auto-detect
+  byId('llamacppModelSelect')?.addEventListener('change', e => {
+    const customInput = byId('llamacppModel');
+    if (e.target.value === 'custom') {
+      customInput?.classList.remove('hidden');
+      customInput?.focus();
+    } else {
+      customInput?.classList.add('hidden');
+    }
+  });
+
+  byId('llamacppModelHint')?.addEventListener('click', async () => {
+    const url = byId('llamacppUrl')?.value.trim() || aiConfig.llamacppUrl || 'http://localhost:8080';
+    const key = byId('llamacppKey')?.value.trim() || aiConfig.llamacppKey || '';
+    const hint = byId('llamacppModelHint');
+    if (hint) hint.textContent = '⏳ Checking server...';
+    try {
+      const models = await fetchLlamaCppModels(url, key);
+      if (models && models.length > 0) {
+        updateLlamaCppModelDropdown(models, byId('llamacppModelSelect')?.value);
+        if (hint) hint.textContent = `✓ Found ${models.length} models`;
+        setTimeout(() => { if (hint) hint.textContent = '⚡ Auto-detect server models'; }, 3000);
+      } else {
+        if (hint) hint.textContent = '✓ Connected (default model active)';
+        setTimeout(() => { if (hint) hint.textContent = '⚡ Auto-detect server models'; }, 3000);
+      }
+    } catch(err) {
+      alert(`Could not fetch llama.cpp models:\n\n${err.message}\n\nEnsure llama-server or LM Studio is running.`);
+      if (hint) hint.textContent = '⚡ Auto-detect server models';
     }
   });
 

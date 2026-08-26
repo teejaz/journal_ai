@@ -313,6 +313,9 @@
       <button class="ai-tab" data-provider="ollama" id="tabOllama">
         <span class="ai-tab-logo">&#9685;</span> Ollama
       </button>
+      <button class="ai-tab" data-provider="llamacpp" id="tabLlamaCpp">
+        <span class="ai-tab-logo">&#9881;</span> llama.cpp
+      </button>
       <button class="ai-tab" data-provider="none" id="tabNone">
         <span class="ai-tab-logo">&#9675;</span> Off
       </button>
@@ -348,12 +351,21 @@
         <span class="ai-hint">Get your API key at <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer">platform.openai.com</a></span>
       </div>
       <div class="ai-field-group">
-        <label class="ai-label">Model</label>
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <label class="ai-label">Model</label>
+          <span class="ai-hint" id="openaiModelHint" style="font-size:0.65rem;color:var(--accent);cursor:pointer">⚡ Auto-detect models</span>
+        </div>
         <select id="openaiModel" class="ai-input">
-          <option value="gpt-4o-mini">gpt-4o-mini (Fast &amp; Efficient)</option>
-          <option value="gpt-4o">gpt-4o (Most Capable)</option>
-          <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
+          <option value="gpt-4o-mini">gpt-4o-mini (Fast &amp; Efficient, Recommended)</option>
+          <option value="gpt-4o">gpt-4o (Flagship Omni)</option>
+          <option value="o3-mini">o3-mini (Fast Reasoning)</option>
+          <option value="o1">o1 (Deep Reasoning)</option>
+          <option value="o1-mini">o1-mini (Reasoning)</option>
+          <option value="gpt-4.5-preview">gpt-4.5-preview</option>
+          <option value="chatgpt-4o-latest">chatgpt-4o-latest</option>
+          <option value="custom">-- Custom Model Name --</option>
         </select>
+        <input type="text" id="openaiCustomModel" class="ai-input hidden" placeholder="Enter custom model (e.g. gpt-4o-2024-11-20)..." style="margin-top:6px" />
       </div>
     </div>
 
@@ -381,6 +393,31 @@
         </select>
         <input type="text" id="ollamaModel" class="ai-input hidden" placeholder="Enter custom model name..." value="llama3" style="margin-top:6px" />
         <span class="ai-hint">If browser blocks connection, run in terminal: <code>OLLAMA_ORIGINS="*" ollama serve</code></span>
+      </div>
+    </div>
+
+    <!-- llama.cpp / Local OpenAI-Compatible Server Panel -->
+    <div class="ai-panel hidden" id="panelLlamaCpp">
+      <div class="ai-field-group">
+        <label class="ai-label">llama.cpp / Local Server URL</label>
+        <input type="text" id="llamacppUrl" class="ai-input" placeholder="http://localhost:8080" value="http://localhost:8080" />
+        <span class="ai-hint">Compatible with <code>llama-server</code>, LM Studio (<code>http://localhost:1234</code>), LocalAI, &amp; vLLM</span>
+      </div>
+      <div class="ai-field-group">
+        <label class="ai-label">API Key (Optional / Bearer Token)</label>
+        <input type="password" id="llamacppKey" class="ai-input" placeholder="Leave blank if not required" autocomplete="off" />
+      </div>
+      <div class="ai-field-group">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <label class="ai-label">Server Model</label>
+          <span class="ai-hint" id="llamacppModelHint" style="font-size:0.65rem;color:var(--accent);cursor:pointer">⚡ Auto-detect server models</span>
+        </div>
+        <select id="llamacppModelSelect" class="ai-input">
+          <option value="default">default (Active Server Model)</option>
+          <option value="custom">-- Custom Model ID --</option>
+        </select>
+        <input type="text" id="llamacppModel" class="ai-input hidden" placeholder="Enter model ID..." value="default" style="margin-top:6px" />
+        <span class="ai-hint">Start llama.cpp: <code>./llama-server -m model.gguf --port 8080 --host 0.0.0.0</code></span>
       </div>
     </div>
 
