@@ -86,6 +86,7 @@ let previewMode       = false;
 let activeTopicFilter = null;
 let selectedProvider  = 'gemini';
 let sidebarView       = 'entries';
+let editingDocType    = 'entry';
 
 const DEFAULT_SYSTEM_PROMPT = 'You are an empathetic, insightful executive life coach and journaling mentor. Help the author extract clarity, uncover root causes, celebrate wins, cultivate strong personal discipline, and discover actionable next steps.';
 
@@ -1225,6 +1226,14 @@ function getEntry(id) { return entries.find(e => e.id === id); }
 function deleteEntry(id) { entries = entries.filter(e => e.id !== id); saveEntries(); }
 
 function updateCurrent() {
+  if (editingDocType === 'pillar') {
+    const pillar = lifePillars.find(p => p.id === activePillarId);
+    if (!pillar) return;
+    pillar.content = byId('editorTextarea')?.value || '';
+    saveLifePillars();
+    return;
+  }
+
   const entry = getEntry(currentId);
   if (!entry) return;
   entry.title = byId('entryTitle')?.value.trim() || '';
@@ -1399,6 +1408,86 @@ function saveLifePillars() {
   try {
     localStorage.setItem(PILLARS_KEY, JSON.stringify(lifePillars));
   } catch(e) {}
+}
+
+function getPillarMarkdownContent(pillar) {
+  if (pillar.content && pillar.content.trim()) return pillar.content;
+
+  let md = `# ${pillar.icon || '📌'} ${pillar.name}\n\n`;
+  md += `## 💡 Profound Realizations\n`;
+  const rList = pillar.realizations || [];
+  if (rList.length === 0) {
+    md += `<!-- No realizations merged yet -->\n`;
+  } else {
+    rList.forEach(r => {
+      md += `- **${r.date || 'Past'}**: ${r.text}\n`;
+      if (r.quote) md += `  > "${r.quote}"\n`;
+    });
+  }
+
+  md += `\n## 🛠️ Working Solutions & Systems\n`;
+  const sList = pillar.solutions || [];
+  if (sList.length === 0) {
+    md += `<!-- No solutions merged yet -->\n`;
+  } else {
+    sList.forEach(s => {
+      md += `- **${s.date || 'Past'}**: ${s.text}\n`;
+      if (s.quote) md += `  > "${s.quote}"\n`;
+    });
+  }
+
+  md += `\n## 📖 Living Principles Manual\n\n`;
+  if (pillar.manualNotes && pillar.manualNotes.trim()) {
+    md += `${pillar.manualNotes}\n`;
+  } else {
+    md += `### Core Principles\n- Write your core rules and standards here.\n`;
+  }
+
+  return md;
+}
+
+function loadPillarInEditor(pillarId) {
+  if (editingDocType === 'entry' && currentId) {
+    updateCurrent();
+    saveEntries();
+  } else if (editingDocType === 'pillar') {
+    updateCurrent();
+    saveLifePillars();
+  }
+
+  editingDocType = 'pillar';
+  activePillarId = pillarId;
+
+  const pillar = lifePillars.find(p => p.id === pillarId) || lifePillars[0];
+  if (!pillar) return;
+
+  if (!pillar.content) {
+    pillar.content = getPillarMarkdownContent(pillar);
+    saveLifePillars();
+  }
+
+  // Ensure editor is visible and analysis view closed
+  const analysisView = byId('analysisView');
+  const editorContainer = byId('editorContainer');
+  const entryMeta = byId('entryMeta');
+  const mdToolbar = byId('mdToolbar');
+  const goalTrack = byId('editorGoalTrack');
+
+  if (analysisView) analysisView.classList.add('hidden');
+  if (editorContainer) editorContainer.classList.remove('hidden');
+  if (entryMeta) entryMeta.classList.remove('hidden');
+  if (mdToolbar) mdToolbar.classList.remove('hidden');
+  if (goalTrack) goalTrack.classList.remove('hidden');
+
+  if (byId('entryTitle')) byId('entryTitle').value = `${pillar.name}`;
+  if (byId('editorTextarea')) byId('editorTextarea').value = pillar.content || '';
+  if (byId('entryDateDisplay')) byId('entryDateDisplay').innerHTML = `<strong>${pillar.icon || '📌'} Topic .md File</strong> · Living Compendium`;
+  if (byId('entryMoodDisplay')) byId('entryMoodDisplay').textContent = `${(pillar.realizations?.length || 0) + (pillar.solutions?.length || 0)} insights`;
+
+  updateStats(pillar.content || '');
+  renderEntriesList();
+  if (previewMode) renderPreview();
+  byId('editorTextarea')?.focus();
 }
 
 function escapeHtml(str) {
@@ -1815,7 +1904,15 @@ function acceptPRSuggestion(index) {
     pillar.realizations.unshift(newEntry);
   }
 
+  delete pillar.content; // force regeneration with new insight
+  pillar.content = getPillarMarkdownContent(pillar);
   saveLifePillars();
+
+  if (editingDocType === 'pillar' && activePillarId === pillar.id) {
+    if (byId('editorTextarea')) byId('editorTextarea').value = pillar.content;
+    updateStats(pillar.content);
+    if (previewMode) renderPreview();
+  }
 
   if (cardEl) {
     cardEl.classList.add('merged');
@@ -2234,10 +2331,129 @@ function renderEntriesList() {
   if (!container) return;
 
   if (heading) {
-    heading.textContent = sidebarView === 'analysis' ? 'AI Analysis Files' : 'Journal Entries';
+    heading.textContent = sidebarView === 'analysis' ? 'Topic & Analysis Files (.md)' : 'Journal Entries';
   }
 
   const q = searchQuery.toLowerCase();
+
+  if (sidebarView === 'analysis') {
+    container.innerHTML = '';
+
+    // 1. Living Topic Markdown Files Section
+    const topicHeading = document.createElement('div');
+    topicHeading.className = 'sidebar-sub-heading';
+    topicHeading.innerHTML = `
+      <span>📚 Living Topic Playbooks (.md)</span>
+      <button class="btn-sidebar-add-topic" id="sidebarAddTopicBtn" title="Create new topic markdown file">+ New</button>
+    `;
+    container.appendChild(topicHeading);
+
+    const filteredPillars = lifePillars.filter(p => !q || (p.name || '').toLowerCase().includes(q) || (p.manualNotes || '').toLowerCase().includes(q));
+
+    filteredPillars.forEach(p => {
+      const el = document.createElement('div');
+      const isActive = editingDocType === 'pillar' && activePillarId === p.id;
+      el.className = 'entry-item' + (isActive ? ' active' : '');
+      el.dataset.pillarId = p.id;
+
+      const totalInsights = (p.realizations?.length || 0) + (p.solutions?.length || 0);
+      const filename = `${p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.md`;
+      const preview = p.manualNotes ? plainText(p.manualNotes).slice(0, 55) : 'Living principles and working strategies';
+
+      el.innerHTML = `
+        <div class="entry-item-title" style="display:flex;align-items:center;gap:6px">
+          <span>${p.icon || '📌'}</span>
+          <span style="font-family:var(--font-mono);font-size:0.8rem">${escapeHtml(filename)}</span>
+        </div>
+        <div class="entry-item-meta" style="margin-top:2px;margin-bottom:3px">
+          <span class="analysis-lens-badge">📖 ${totalInsights} insight${totalInsights !== 1 ? 's' : ''}</span>
+          <span style="font-size:0.6rem;color:var(--text-muted)">Editable .md</span>
+        </div>
+        <div class="entry-item-preview" style="color:var(--text-secondary)">${preview}${preview.length >= 55 ? '…' : ''}</div>
+      `;
+
+      el.addEventListener('click', () => loadPillarInEditor(p.id));
+      container.appendChild(el);
+    });
+
+    // Wire add topic button
+    byId('sidebarAddTopicBtn')?.addEventListener('click', e => {
+      e.stopPropagation();
+      createNewPillar();
+    });
+
+    // 2. Daily Analysis Files Section
+    const dailyHeading = document.createElement('div');
+    dailyHeading.className = 'sidebar-sub-heading';
+    dailyHeading.style.marginTop = '12px';
+    dailyHeading.innerHTML = `<span>✨ Daily Analysis Reflections</span>`;
+    container.appendChild(dailyHeading);
+
+    let filteredEntries = entries.filter(e =>
+      (!q || (e.title || '').toLowerCase().includes(q) || (e.content || '').toLowerCase().includes(q)) &&
+      (!activeTopicFilter || (e.topics || []).some(t => t.topic === activeTopicFilter))
+    );
+
+    if (filteredEntries.length === 0) {
+      const emptyDiv = document.createElement('div');
+      emptyDiv.style.padding = '8px 10px';
+      emptyDiv.style.fontSize = '0.74rem';
+      emptyDiv.style.color = 'var(--text-muted)';
+      emptyDiv.textContent = 'No daily entries found.';
+      container.appendChild(emptyDiv);
+      return;
+    }
+
+    filteredEntries.forEach(entry => {
+      const el = document.createElement('div');
+      const isActive = editingDocType === 'entry' && entry.id === currentId && !byId('analysisView')?.classList.contains('hidden');
+      el.className = 'entry-item' + (isActive ? ' active' : '');
+      el.dataset.id = entry.id;
+
+      const analyzedLenses = entry.analysis ? Object.keys(entry.analysis).filter(k => entry.analysis[k]) : [];
+      const lensBadges = analyzedLenses.length > 0
+        ? analyzedLenses.slice(0, 2).map(k => {
+            const lensObj = ANALYSIS_LENSES[k];
+            return `<span class="analysis-lens-badge">${lensObj?.icon || '✨'} ${lensObj?.name ? lensObj.name.split(' ')[0] : k}</span>`;
+          }).join('') + (analyzedLenses.length > 2 ? `<span class="analysis-lens-badge">+${analyzedLenses.length - 2}</span>` : '')
+        : `<span style="font-size:.62rem;color:var(--text-muted);font-style:italic">⚠️ Not analyzed</span>`;
+
+      let previewText = entry.aiSummary || '';
+      if (!previewText && analyzedLenses.length > 0) {
+        const firstLens = entry.analysis[analyzedLenses[0]];
+        if (typeof firstLens === 'string') {
+          previewText = plainText(firstLens).slice(0, 60);
+        } else if (firstLens && firstLens.suggestions && firstLens.suggestions.length > 0) {
+          previewText = firstLens.suggestions[0].quotedText || firstLens.suggestions[0].text || '';
+        }
+      }
+      if (!previewText) previewText = plainText(entry.content).slice(0, 55) || 'Empty entry';
+
+      el.innerHTML = `
+        <div class="entry-item-title" style="display:flex;align-items:center;justify-content:space-between">
+          <span>✨ ${entry.title || 'Untitled'}.analysis.md</span>
+          <span style="font-size:.62rem;color:var(--text-muted);font-weight:normal">${formatShortDate(entry.createdAt)}</span>
+        </div>
+        <div class="entry-item-meta" style="margin-top:3px;margin-bottom:3px">
+          ${lensBadges}
+        </div>
+        <div class="entry-item-preview" style="color:var(--text-secondary)">${previewText}${previewText.length >= 55 ? '…' : ''}</div>
+      `;
+
+      el.addEventListener('click', () => {
+        editingDocType = 'entry';
+        loadEntry(entry.id);
+        const firstLens = analyzedLenses[0] || 'todos';
+        openAnalysisView(firstLens);
+      });
+
+      container.appendChild(el);
+    });
+
+    return;
+  }
+
+  // Normal Journal Entries List
   let filtered = entries.filter(e =>
     (!q || (e.title || '').toLowerCase().includes(q) || (e.content || '').toLowerCase().includes(q) || (e.subtopics || []).some(s => s.toLowerCase().includes(q))) &&
     (!activeTopicFilter || (e.topics || []).some(t => t.topic === activeTopicFilter))
@@ -2245,80 +2461,42 @@ function renderEntriesList() {
 
   container.innerHTML = '';
   if (filtered.length === 0) {
-    container.innerHTML = `<div style="padding:16px;text-align:center;font-size:.78rem;color:var(--text-muted)">${sidebarView === 'analysis' ? 'No analysis files found' : 'No entries found'}</div>`;
+    container.innerHTML = `<div style="padding:16px;text-align:center;font-size:.78rem;color:var(--text-muted)">No entries found</div>`;
     return;
   }
 
   filtered.forEach(entry => {
     const el = document.createElement('div');
-    el.className = 'entry-item' + (entry.id === currentId ? ' active' : '');
+    const isActive = editingDocType === 'entry' && entry.id === currentId && byId('analysisView')?.classList.contains('hidden');
+    el.className = 'entry-item' + (isActive ? ' active' : '');
     el.dataset.id = entry.id;
 
     const mood = entry.mood ? MOOD_EMOJIS[entry.mood] : '';
+    const preview = plainText(entry.content).slice(0, 60) || 'Empty entry';
+    const topicChips = (entry.topics || []).slice(0, 2).map(({ topic }) =>
+      `<span style="font-size:.6rem;background:rgba(138,80,255,.15);border:1px solid rgba(138,80,255,.25);border-radius:99px;padding:1px 6px;color:#c8a8ff;margin-right:2px">${topic}</span>`
+    ).join('');
 
-    if (sidebarView === 'analysis') {
-      const analyzedLenses = entry.analysis ? Object.keys(entry.analysis).filter(k => entry.analysis[k]) : [];
-      
-      const lensBadges = analyzedLenses.length > 0
-        ? analyzedLenses.slice(0, 3).map(k => {
-            const lensObj = ANALYSIS_LENSES[k];
-            return `<span class="analysis-lens-badge">${lensObj?.icon || '✨'} ${lensObj?.name ? lensObj.name.split(' ')[0] : k}</span>`;
-          }).join('') + (analyzedLenses.length > 3 ? `<span class="analysis-lens-badge">+${analyzedLenses.length - 3}</span>` : '')
-        : `<span style="font-size:.62rem;color:var(--text-muted);font-style:italic">⚠️ Not analyzed</span>`;
+    const subtagChips = (entry.subtopics || []).slice(0, 2).map(t =>
+      `<span style="font-size:.58rem;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:1px 5px;color:var(--text-muted);margin-right:2px;font-family:var(--font-mono)">#${t}</span>`
+    ).join('');
 
-      let previewText = entry.aiSummary || '';
-      if (!previewText && analyzedLenses.length > 0) {
-        const firstLens = entry.analysis[analyzedLenses[0]];
-        if (typeof firstLens === 'string') {
-          previewText = plainText(firstLens).slice(0, 65);
-        } else if (firstLens && firstLens.suggestions && firstLens.suggestions.length > 0) {
-          previewText = firstLens.suggestions[0].quotedText || firstLens.suggestions[0].text || '';
-        }
-      }
-      if (!previewText) previewText = plainText(entry.content).slice(0, 60) || 'Empty entry';
+    el.innerHTML = `
+      <div class="entry-item-title">${entry.title || 'Untitled'}</div>
+      <div class="entry-item-meta">
+        <span class="entry-item-mood">${mood}</span>
+        <span>${formatShortDate(entry.createdAt)}</span>
+        ${topicChips}
+      </div>
+      <div class="entry-item-preview">${preview}${preview.length >= 60 ? '…' : ''}</div>
+      ${subtagChips ? `<div style="margin-top:3px">${subtagChips}</div>` : ''}
+    `;
 
-      el.innerHTML = `
-        <div class="entry-item-title" style="display:flex;align-items:center;justify-content:space-between">
-          <span>✨ ${entry.title || 'Untitled'}</span>
-          <span style="font-size:.62rem;color:var(--text-muted);font-weight:normal">${formatShortDate(entry.createdAt)}</span>
-        </div>
-        <div class="entry-item-meta" style="margin-top:3px;margin-bottom:3px">
-          ${lensBadges}
-        </div>
-        <div class="entry-item-preview" style="color:var(--text-secondary)">${previewText}${previewText.length >= 60 ? '…' : ''}</div>
-      `;
-
-      el.addEventListener('click', () => {
-        loadEntry(entry.id);
-        const firstLens = analyzedLenses[0] || 'todos';
-        openAnalysisView(firstLens);
-      });
-    } else {
-      const preview = plainText(entry.content).slice(0, 60) || 'Empty entry';
-      const topicChips = (entry.topics || []).slice(0, 2).map(({ topic }) =>
-        `<span style="font-size:.6rem;background:rgba(138,80,255,.15);border:1px solid rgba(138,80,255,.25);border-radius:99px;padding:1px 6px;color:#c8a8ff;margin-right:2px">${topic}</span>`
-      ).join('');
-
-      const subtagChips = (entry.subtopics || []).slice(0, 2).map(t =>
-        `<span style="font-size:.58rem;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:1px 5px;color:var(--text-muted);margin-right:2px;font-family:var(--font-mono)">#${t}</span>`
-      ).join('');
-
-      el.innerHTML = `
-        <div class="entry-item-title">${entry.title || 'Untitled'}</div>
-        <div class="entry-item-meta">
-          <span class="entry-item-mood">${mood}</span>
-          <span>${formatShortDate(entry.createdAt)}</span>
-          ${topicChips}
-        </div>
-        <div class="entry-item-preview">${preview}${preview.length >= 60 ? '…' : ''}</div>
-        ${subtagChips ? `<div style="margin-top:3px">${subtagChips}</div>` : ''}
-      `;
-
-      el.addEventListener('click', () => {
-        loadEntry(entry.id);
-        closeAnalysisView();
-      });
-    }
+    el.addEventListener('click', () => {
+      editingDocType = 'entry';
+      loadEntry(entry.id);
+      closeAnalysisView();
+    });
 
     container.appendChild(el);
   });
@@ -2619,14 +2797,30 @@ function applyMarkdown(cmd) {
 }
 
 function exportMarkdown() {
+  if (editingDocType === 'pillar') {
+    const pillar = lifePillars.find(p => p.id === activePillarId) || lifePillars[0];
+    if (!pillar) return;
+    const content = byId('editorTextarea')?.value || pillar.content || getPillarMarkdownContent(pillar);
+    const filename = `${(pillar.name || 'topic').replace(/[^a-z0-9]/gi, '_').toLowerCase()}.md`;
+    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    return;
+  }
+
   const entry = getEntry(currentId);
   if (!entry) return;
 
-  updateCurrent(); saveEntries();
+  const topicsLine = (entry.topics || []).map(t => `${t.topic} (${t.tone})`).join(', ') || 'none';
+  const subtopicLine = (entry.subtopics || []).join(', ') || 'none';
   const wc = countWords(entry.content);
   const uniq = getUniqueWords(entry.content).size;
-  const topicsLine = (entry.topics || []).map(t => `${t.topic}-${t.tone}`).join(', ') || 'none';
-  const subtopicLine = (entry.subtopics || []).join(', ') || 'none';
 
   const fileText = `---
 title: "${entry.title || 'Untitled'}"

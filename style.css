@@ -364,6 +364,34 @@ body {
 }
 .clear-topic-filter:hover { text-decoration: underline; }
 
+.sidebar-sub-heading {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 8px 6px 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.btn-sidebar-add-topic {
+  background: transparent;
+  border: 1px dashed rgba(245, 182, 69, 0.35);
+  color: var(--accent);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-ui);
+  font-size: 0.68rem;
+  padding: 2px 7px;
+  cursor: pointer;
+  transition: all var(--t-fast);
+}
+.btn-sidebar-add-topic:hover {
+  background: rgba(245, 182, 69, 0.15);
+  border-color: var(--accent);
+}
+
 /* Entry List */
 .entries-list {
   flex: 1;
