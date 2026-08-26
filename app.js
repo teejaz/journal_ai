@@ -751,20 +751,20 @@ const ANALYSIS_LENSES = {
 - Meaningful Relationships (family, friendships, partner, boundaries, empathy)
 - General Life Principles (mindset, discipline, personal standards)
 
-Extract 1 to 5 concrete suggestions to merge into these living pillars. Each suggestion MUST be either:
-1) A "realization" (a profound personal insight, mindset shift, or core truth realized).
-2) A "solution" (an actionable method, habit, system, or strategy that worked).
+Extract 1 to 5 profound realizations or working solutions from the text.
+
+CRITICAL INSTRUCTION:
+Do NOT rewrite, summarize, or paraphrase using AI words. Extract the EXACT, VERBATIM quoted text directly as written by the author in their journal entry.
 
 Respond ONLY with valid JSON with this exact structure:
 {
   "suggestions": [
     {
-      "pillarId": "career",
+      "pillarId": "career", // "career" | "gym" | "dreams" | "relationships" or custom
       "pillarName": "Career & Job Search",
-      "type": "solution",
-      "title": "Short title",
-      "text": "Specific, actionable principle or working strategy to merge.",
-      "quote": "Context or snippet from the entry that inspired this."
+      "section": "realizations", // "realizations" or "solutions" or "manual"
+      "quotedText": "Exact verbatim quote from the entry as written by user",
+      "context": "Brief reason why this quote is significant"
     }
   ]
 }`
@@ -1564,6 +1564,91 @@ async function runLensAnalysis(lensKey, customPromptText = '') {
   }
 }
 
+function buildPillarFileDiffLines(pillar, additionText, targetSection, entryDate) {
+  const pName = pillar.name || 'Life Pillar';
+  const pIcon = pillar.icon || '📌';
+  const filename = `${pName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.md`;
+  
+  const lines = [];
+  let ln = 1;
+
+  lines.push({ ln: ln++, type: 'heading', sign: ' ', text: `# ${pIcon} ${pName}` });
+  lines.push({ ln: ln++, type: 'ctx', sign: ' ', text: `` });
+
+  // Section 1: Realizations
+  const isRealization = targetSection === 'realizations' || targetSection === 'realization';
+  lines.push({ ln: ln++, type: 'heading', sign: ' ', text: `## 💡 Profound Realizations` });
+  
+  if (isRealization && additionText) {
+    lines.push({ ln: ln++, type: 'added', sign: '+', text: `- **${entryDate}**: "${additionText}"` });
+  }
+
+  const rList = pillar.realizations || [];
+  if (rList.length === 0 && !isRealization) {
+    lines.push({ ln: ln++, type: 'ctx', sign: ' ', text: `  (No realizations recorded yet)` });
+  } else {
+    rList.forEach(r => {
+      lines.push({ ln: ln++, type: 'ctx', sign: ' ', text: `- **${r.date || 'Past'}**: ${r.text}` });
+    });
+  }
+  lines.push({ ln: ln++, type: 'ctx', sign: ' ', text: `` });
+
+  // Section 2: Solutions
+  const isSolution = targetSection === 'solutions' || targetSection === 'solution';
+  lines.push({ ln: ln++, type: 'heading', sign: ' ', text: `## 🛠️ Working Solutions & Systems` });
+  
+  if (isSolution && additionText) {
+    lines.push({ ln: ln++, type: 'added', sign: '+', text: `- **${entryDate}**: "${additionText}"` });
+  }
+
+  const sList = pillar.solutions || [];
+  if (sList.length === 0 && !isSolution) {
+    lines.push({ ln: ln++, type: 'ctx', sign: ' ', text: `  (No solutions recorded yet)` });
+  } else {
+    sList.forEach(s => {
+      lines.push({ ln: ln++, type: 'ctx', sign: ' ', text: `- **${s.date || 'Past'}**: ${s.text}` });
+    });
+  }
+  lines.push({ ln: ln++, type: 'ctx', sign: ' ', text: `` });
+
+  // Section 3: Principles Manual
+  const isManual = targetSection === 'manual';
+  lines.push({ ln: ln++, type: 'heading', sign: ' ', text: `## 📖 Living Principles Manual` });
+  if (isManual && additionText) {
+    lines.push({ ln: ln++, type: 'added', sign: '+', text: `- "${additionText}"` });
+  }
+  if (pillar.manualNotes && pillar.manualNotes.trim()) {
+    pillar.manualNotes.split('\n').forEach(l => {
+      lines.push({ ln: ln++, type: 'ctx', sign: ' ', text: l });
+    });
+  } else if (!isManual) {
+    lines.push({ ln: ln++, type: 'ctx', sign: ' ', text: `  (Write manual principles in editor)` });
+  }
+
+  return { filename, lines };
+}
+
+function renderDiffTableHTML(filename, diffLines) {
+  return `
+    <div class="pr-diff-file-header">
+      <div class="pr-diff-file-title">
+        <span>📄</span>
+        <span>${escapeHtml(filename)}</span>
+      </div>
+      <span class="pr-diff-stat-badge">+1 addition</span>
+    </div>
+    <div class="pr-diff-file-body">
+      ${diffLines.map(row => `
+        <div class="pr-diff-row ${row.type}">
+          <span class="pr-diff-ln">${row.ln}</span>
+          <span class="pr-diff-sign">${row.sign}</span>
+          <span class="pr-diff-text">${escapeHtml(row.text)}</span>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
 function renderPRReviewCards(data) {
   const card = byId('analysisOutputCard');
   if (!card) return;
@@ -1582,32 +1667,67 @@ function renderPRReviewCards(data) {
     return;
   }
 
+  const entry = getEntry(currentId);
+  const entryDate = entry ? (entry.date || isoDate(new Date(entry.createdAt))) : isoDate();
+
   card.innerHTML = `
     <div class="pr-review-wrap">
       <div class="pr-review-intro">
-        <strong>Pull Request Review</strong>: Found ${suggestions.length} proposed addition${suggestions.length > 1 ? 's' : ''} for your Life Pillars. Review and choose which realizations or solutions to merge into your living compendium.
+        <strong>Pull Request Review</strong>: Found ${suggestions.length} verbatim quote${suggestions.length > 1 ? 's' : ''} from your entry. Review the full file diff and select which Life Pillar &amp; Section to merge them into.
       </div>
-      ${suggestions.map((s, idx) => `
-        <div class="pr-diff-card" id="prCard_${idx}" data-index="${idx}">
-          <div class="pr-diff-header">
-            <div class="pr-header-tags">
-              <span class="pr-pillar-tag">${escapeHtml(s.pillarName || s.pillarId || 'General')}</span>
-              <span class="pr-type-tag">${s.type === 'solution' ? '🛠️ Working Solution' : '💡 Profound Realization'}</span>
+      ${suggestions.map((s, idx) => {
+        const quotedText = s.quotedText || s.quote || s.text || '';
+        const targetPillarId = (s.pillarId || '').toLowerCase().trim();
+        const initialPillar = lifePillars.find(p => p.id === targetPillarId || p.name.toLowerCase().includes(targetPillarId)) || lifePillars[0];
+        const initialSection = s.section || (s.type === 'solution' ? 'solutions' : 'realizations');
+
+        const { filename, lines } = buildPillarFileDiffLines(initialPillar, quotedText, initialSection, entryDate);
+
+        return `
+          <div class="pr-diff-card" id="prCard_${idx}" data-index="${idx}">
+            <div class="pr-diff-header">
+              <div class="pr-diff-controls">
+                <label style="font-size:0.72rem;color:var(--text-secondary)">Target Pillar:</label>
+                <select class="pr-select-input pr-pillar-select" data-idx="${idx}">
+                  ${lifePillars.map(p => `
+                    <option value="${p.id}" ${p.id === initialPillar.id ? 'selected' : ''}>${p.icon || '📌'} ${escapeHtml(p.name)}</option>
+                  `).join('')}
+                </select>
+
+                <label style="font-size:0.72rem;color:var(--text-secondary)">Section:</label>
+                <select class="pr-select-input pr-section-select" data-idx="${idx}">
+                  <option value="realizations" ${initialSection === 'realizations' ? 'selected' : ''}>💡 Profound Realizations</option>
+                  <option value="solutions" ${initialSection === 'solutions' ? 'selected' : ''}>🛠️ Working Solutions</option>
+                  <option value="manual" ${initialSection === 'manual' ? 'selected' : ''}>📖 Principles Manual</option>
+                </select>
+              </div>
+              <span style="font-size:0.7rem;color:var(--text-muted)">#pr-${idx + 1}</span>
             </div>
-            <span style="font-size:0.7rem;color:var(--text-muted)">#suggestion-${idx + 1}</span>
+
+            <!-- Full File Diff View -->
+            <div id="prDiffContainer_${idx}">
+              ${renderDiffTableHTML(filename, lines)}
+            </div>
+
+            ${s.context ? `<div class="pr-context-quote">💡 <em>Context: ${escapeHtml(s.context)}</em></div>` : ''}
+
+            <div class="pr-actions-row">
+              <button class="pr-btn-discard" data-idx="${idx}">✗ Discard</button>
+              <button class="pr-btn-merge" id="prMergeBtn_${idx}" data-idx="${idx}">✓ Accept &amp; Merge into ${escapeHtml(initialPillar.name)}</button>
+            </div>
           </div>
-          <div class="pr-diff-box">
-            <span class="pr-diff-line">+ ${escapeHtml(s.text)}</span>
-          </div>
-          ${s.quote ? `<div class="pr-context-quote">"${escapeHtml(s.quote)}"</div>` : ''}
-          <div class="pr-actions-row">
-            <button class="pr-btn-discard" data-idx="${idx}">✗ Discard</button>
-            <button class="pr-btn-merge" data-idx="${idx}">✓ Accept &amp; Merge</button>
-          </div>
-        </div>
-      `).join('')}
+        `;
+      }).join('')}
     </div>
   `;
+
+  // Attach dynamic dropdown change listeners to update the full-file diff live
+  card.querySelectorAll('.pr-pillar-select, .pr-section-select').forEach(select => {
+    select.addEventListener('change', e => {
+      const idx = parseInt(select.dataset.idx, 10);
+      updatePRCardDiff(idx);
+    });
+  });
 
   // Attach event listeners to merge & discard buttons
   card.querySelectorAll('.pr-btn-merge').forEach(btn => {
@@ -1618,35 +1738,65 @@ function renderPRReviewCards(data) {
   });
 }
 
+function updatePRCardDiff(idx) {
+  const cardEl = byId(`prCard_${idx}`);
+  if (!cardEl) return;
+
+  const pillarSelect = cardEl.querySelector('.pr-pillar-select');
+  const sectionSelect = cardEl.querySelector('.pr-section-select');
+  const diffContainer = byId(`prDiffContainer_${idx}`);
+  const mergeBtn = byId(`prMergeBtn_${idx}`);
+
+  const item = currentPRSuggestions[idx];
+  if (!item || !pillarSelect || !sectionSelect || !diffContainer) return;
+
+  const pillarId = pillarSelect.value;
+  const section = sectionSelect.value;
+  const pillar = lifePillars.find(p => p.id === pillarId) || lifePillars[0];
+
+  const quotedText = item.quotedText || item.quote || item.text || '';
+  const entry = getEntry(currentId);
+  const entryDate = entry ? (entry.date || isoDate(new Date(entry.createdAt))) : isoDate();
+
+  const { filename, lines } = buildPillarFileDiffLines(pillar, quotedText, section, entryDate);
+  diffContainer.innerHTML = renderDiffTableHTML(filename, lines);
+
+  if (mergeBtn) {
+    mergeBtn.textContent = `✓ Accept & Merge into ${pillar.name}`;
+  }
+}
+
 function acceptPRSuggestion(index) {
   const item = currentPRSuggestions[index];
   if (!item) return;
 
   const cardEl = byId(`prCard_${index}`);
-  const targetId = (item.pillarId || '').toLowerCase().trim();
+  const pillarSelect = cardEl?.querySelector('.pr-pillar-select');
+  const sectionSelect = cardEl?.querySelector('.pr-section-select');
 
-  // Find existing pillar or default to career
+  const targetId = pillarSelect ? pillarSelect.value : ((item.pillarId || '').toLowerCase().trim());
+  const targetSection = sectionSelect ? sectionSelect.value : (item.section || (item.type === 'solution' ? 'solutions' : 'realizations'));
+
   let pillar = lifePillars.find(p => p.id === targetId || p.name.toLowerCase().includes(targetId)) || lifePillars[0];
-
-  if (!pillar) {
-    pillar = lifePillars[0];
-  }
 
   const entry = getEntry(currentId);
   const entryDate = entry ? (entry.date || isoDate(new Date(entry.createdAt))) : isoDate();
+  const quotedText = item.quotedText || item.quote || item.text || '';
 
   const newEntry = {
     id: uid(),
-    text: item.text,
+    text: quotedText,
     date: entryDate,
-    quote: item.quote || '',
+    quote: quotedText,
     entryId: currentId,
-    type: item.type || 'realization'
+    type: targetSection
   };
 
-  if (item.type === 'solution') {
+  if (targetSection === 'solutions' || targetSection === 'solution') {
     if (!pillar.solutions) pillar.solutions = [];
     pillar.solutions.unshift(newEntry);
+  } else if (targetSection === 'manual') {
+    pillar.manualNotes = (pillar.manualNotes ? pillar.manualNotes.trim() + '\n' : '') + `- **${entryDate}**: "${quotedText}"`;
   } else {
     if (!pillar.realizations) pillar.realizations = [];
     pillar.realizations.unshift(newEntry);
@@ -1658,7 +1808,8 @@ function acceptPRSuggestion(index) {
     cardEl.classList.add('merged');
     const actionsRow = cardEl.querySelector('.pr-actions-row');
     if (actionsRow) {
-      actionsRow.innerHTML = `<span class="pr-merged-badge">✓ Merged into ${escapeHtml(pillar.name)}</span>`;
+      const sectionLabel = targetSection === 'solutions' ? 'Working Solutions' : (targetSection === 'manual' ? 'Principles Manual' : 'Realizations');
+      actionsRow.innerHTML = `<span class="pr-merged-badge">✓ Merged into ${escapeHtml(pillar.name)} → ${sectionLabel}</span>`;
     }
   }
 }
