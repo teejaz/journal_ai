@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Folio — Journal &amp; Thought Companion</title>
+  <meta name="description" content="Minimalist, eye-friendly journaling app with topic tracking, mood analytics, and Markdown export." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- Ambient Glow Orbs -->
+<div class="bg-orb orb-1"></div>
+<div class="bg-orb orb-2"></div>
+<div class="bg-orb orb-3"></div>
+
+<div class="app-shell" id="appShell">
+
+  <!-- LEFT SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="logo">
+        <span class="logo-icon">📖</span>
+        <span class="logo-text">Folio</span>
+      </div>
+      <button class="btn-icon" id="newEntryBtn" title="New Entry (Ctrl+N)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
+    </div>
+
+    <!-- Search -->
+    <div class="search-wrap">
+      <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="search" id="searchInput" placeholder="Search entries..." autocomplete="off" />
+    </div>
+
+    <!-- Mini Calendar -->
+    <div class="calendar-wrap">
+      <div class="cal-header">
+        <button class="cal-nav" id="calPrev">&#8249;</button>
+        <span class="cal-title" id="calTitle">August 2026</span>
+        <button class="cal-nav" id="calNext">&#8250;</button>
+      </div>
+      <div class="cal-grid" id="calGrid"></div>
+    </div>
+
+    <!-- Topic Filter Chips -->
+    <div class="topic-filter-bar" id="topicFilterBar"></div>
+
+    <!-- Entries List -->
+    <div class="entries-label-row">
+      <span class="entries-label">Entries</span>
+      <span class="clear-topic-filter hidden" id="clearTopicFilter">&#10005; clear filter</span>
+    </div>
+    <div class="entries-list" id="entriesList"></div>
+  </aside>
+
+  <!-- MAIN EDITOR AREA -->
+  <main class="editor-area" id="editorArea">
+
+    <!-- Top Bar -->
+    <div class="editor-topbar">
+      <button class="btn-icon sidebar-toggle" id="sidebarToggle" title="Toggle Sidebar">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+
+      <input type="text" id="entryTitle" class="entry-title-input" placeholder="Entry title..." />
+
+      <div class="topbar-actions">
+        <!-- AI Analyze -->
+        <button class="btn-ai" id="aiAnalyzeBtn" title="Analyze Topics (Ctrl+Shift+A)">
+          <span class="ai-btn-icon">&#10024;</span>
+          <span class="ai-btn-label">Analyze</span>
+        </button>
+
+        <!-- AI Settings Icon -->
+        <button class="btn-icon ai-settings-btn" id="aiSettingsBtn" title="AI Settings">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+        </button>
+
+        <!-- Mood Picker -->
+        <div class="feeling-wrap" id="feelingWrap">
+          <button class="feeling-btn" id="feelingBtn" title="Set Mood">
+            <span id="currentFeeling">&#129529;</span>
+          </button>
+          <div class="feeling-picker hidden" id="feelingPicker">
+            <div class="feeling-grid">
+              <button class="feel-opt" data-feeling="happy" title="Happy">😊</button>
+              <button class="feel-opt" data-feeling="grateful" title="Grateful">🥰</button>
+              <button class="feel-opt" data-feeling="calm" title="Calm">😌</button>
+              <button class="feel-opt" data-feeling="reflective" title="Reflective">🤔</button>
+              <button class="feel-opt" data-feeling="tired" title="Tired">😴</button>
+              <button class="feel-opt" data-feeling="anxious" title="Anxious">😟</button>
+              <button class="feel-opt" data-feeling="frustrated" title="Frustrated">😤</button>
+              <button class="feel-opt" data-feeling="sad" title="Sad">😢</button>
+              <button class="feel-opt" data-feeling="excited" title="Excited">🤩</button>
+              <button class="feel-opt" data-feeling="motivated" title="Motivated">💪</button>
+              <button class="feel-opt" data-feeling="overwhelmed" title="Overwhelmed">🤯</button>
+              <button class="feel-opt" data-feeling="inspired" title="Inspired">✨</button>
+            </div>
+            <div class="feeling-label-display" id="feelingLabelDisplay">Select a mood</div>
+          </div>
+        </div>
+
+        <!-- Font Selector -->
+        <div class="font-selector">
+          <button class="btn-pill active" data-font="lora" id="fontLora">Lora</button>
+          <button class="btn-pill" data-font="inter" id="fontInter">Inter</button>
+          <button class="btn-pill" data-font="mono" id="fontMono">Mono</button>
+        </div>
+
+        <!-- Export -->
+        <button class="btn-icon" id="exportBtn" title="Export as Markdown (.md)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </button>
+
+        <!-- Delete -->
+        <button class="btn-icon btn-danger" id="deleteBtn" title="Delete Entry">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Date & Mood Bar -->
+    <div class="entry-meta" id="entryMeta">
+      <span id="entryDateDisplay" class="entry-date"></span>
+      <span id="entryMoodDisplay" class="entry-mood"></span>
+    </div>
+
+    <!-- Markdown Formatting Toolbar -->
+    <div class="md-toolbar" id="mdToolbar">
+      <button class="md-tool" data-cmd="bold" title="Bold (Ctrl+B)"><strong>B</strong></button>
+      <button class="md-tool" data-cmd="italic" title="Italic (Ctrl+I)"><em>I</em></button>
+      <button class="md-tool" data-cmd="h1" title="Heading 1">H1</button>
+      <button class="md-tool" data-cmd="h2" title="Heading 2">H2</button>
+      <button class="md-tool" data-cmd="h3" title="Heading 3">H3</button>
+      <div class="md-tool-sep"></div>
+      <button class="md-tool" data-cmd="ul" title="Bullet List">&#8226;</button>
+      <button class="md-tool" data-cmd="ol" title="Numbered List">1.</button>
+      <button class="md-tool" data-cmd="quote" title="Quote">"</button>
+      <button class="md-tool" data-cmd="code" title="Inline Code">&lt;/&gt;</button>
+      <button class="md-tool" data-cmd="hr" title="Divider">&#8212;</button>
+      <div class="md-tool-sep"></div>
+      <button class="md-tool mode-toggle" id="previewToggle" title="Toggle Preview Mode">&#128065; Preview</button>
+    </div>
+
+    <!-- Textarea / Markdown Preview Container -->
+    <div class="editor-container" id="editorContainer">
+      <textarea id="editorTextarea" spellcheck="true" autocomplete="off" placeholder="Begin writing... your thoughts, your day, your story.&#10;&#10;Tip: Use # for headings, **bold**, _italic_"></textarea>
+      <div class="preview-pane hidden" id="previewPane"></div>
+    </div>
+
+    <!-- Word Goal Progress Bar -->
+    <div class="goal-track">
+      <div class="goal-fill" id="editorGoalFill" style="width:0%"></div>
+    </div>
+
+    <!-- Status Bar -->
+    <div class="status-bar">
+      <span id="statWords">0 words</span>
+      <span class="stat-sep">&#183;</span>
+      <span id="statGoalBadge" class="stat-goal-badge">🎯 0 / 750w (0%)</span>
+      <span class="stat-sep">&#183;</span>
+      <span id="statChars">0 chars</span>
+      <span class="stat-sep">&#183;</span>
+      <span id="statReadTime">0 min read</span>
+      <span class="stat-sep">&#183;</span>
+      <span id="statUnique">0 unique words</span>
+      <span class="status-saved" id="saveIndicator">Saved</span>
+    </div>
+  </main>
+
+  <!-- RIGHT STATS & TOPICS PANEL -->
+  <aside class="stats-panel" id="statsPanel">
+    <!-- Word Goal Milestone Panel Section -->
+    <div class="panel-section">
+      <div class="panel-title" style="display:flex;align-items:center;justify-content:space-between">
+        <span>🎯 Word Goal</span>
+        <span id="goalMilestoneTier" style="color:var(--accent);font-size:0.68rem;text-transform:none;font-weight:600">Tier 1 · 750w</span>
+      </div>
+      <div class="goal-card">
+        <div class="goal-progress-wrap">
+          <div class="goal-progress-bar">
+            <div class="goal-progress-fill" id="panelGoalFill" style="width: 0%"></div>
+          </div>
+        </div>
+        <div class="goal-meta-row">
+          <span class="goal-words-count" id="goalWordsCount">0 / 750 words</span>
+          <span class="goal-percent" id="goalPercent">0%</span>
+        </div>
+        <div class="goal-congrats hidden" id="goalCongrats">🎉 Congrats! 2,100+ words reached!</div>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-title">&#10022; This Entry</div>
+      <div class="stat-cards">
+        <div class="stat-card">
+          <div class="stat-num" id="pnlWords">0</div>
+          <div class="stat-lbl">Words</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num" id="pnlSentences">0</div>
+          <div class="stat-lbl">Sentences</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num" id="pnlUnique">0</div>
+          <div class="stat-lbl">Unique</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num" id="pnlReadTime">0m</div>
+          <div class="stat-lbl">Read time</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-title">&#127777; Mood</div>
+      <div class="mood-display" id="moodDisplay">
+        <span class="mood-emoji" id="panelMoodEmoji">&#129529;</span>
+        <span class="mood-text" id="panelMoodText">Not set</span>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-title" style="display:flex;align-items:center;justify-content:space-between">
+        <span>&#127981; Topics</span>
+        <button class="topics-overview-btn" id="topicsOverviewBtn" title="See full topics overview">All &#8599;</button>
+      </div>
+      <div class="topics-group-label">Broad</div>
+      <div class="entry-topics" id="entryTopics"></div>
+      <div class="topics-group-label" style="margin-top:10px">Specific</div>
+      <div class="entry-subtopics" id="entrySubtopics"></div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-title">&#128292; Top Words</div>
+      <div class="word-cloud" id="wordCloud"></div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-title">&#128202; All-time Stats</div>
+      <div class="alltime-stats" id="allTimeStats"></div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-title">&#128197; Mood Timeline</div>
+      <div class="mood-timeline" id="moodTimeline"></div>
+    </div>
+  </aside>
+
+</div>
+
+<!-- MODALS -->
+
+<!-- Empty State -->
+<div class="empty-state hidden" id="emptyState">
+  <div class="empty-icon">📖</div>
+  <h2>Welcome to Folio</h2>
+  <p>Start your journaling journey today.</p>
+  <button class="btn-primary" id="emptyNewBtn">Create First Entry</button>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal-overlay hidden" id="deleteModal">
+  <div class="modal-card">
+    <div class="modal-icon">&#128465;</div>
+    <h3>Delete this entry?</h3>
+    <p>This action cannot be undone.</p>
+    <div class="modal-actions">
+      <button class="btn-secondary" id="cancelDelete">Cancel</button>
+      <button class="btn-danger-solid" id="confirmDelete">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- Topics Overview Modal -->
+<div class="modal-overlay hidden" id="topicsModal">
+  <div class="modal-card topics-modal-card">
+    <div class="topics-modal-header">
+      <div class="topics-modal-title">&#127981; Topics Overview</div>
+      <button class="btn-icon" id="closeTopicsModal">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <p class="topics-modal-sub">Analysis of what you write about and how you feel</p>
+    <div class="topics-modal-body" id="topicsModalBody"></div>
+  </div>
+</div>
+
+<!-- AI Settings Modal -->
+<div class="modal-overlay hidden" id="aiSettingsModal">
+  <div class="modal-card ai-settings-card">
+    <div class="topics-modal-header">
+      <div class="topics-modal-title">&#10024; AI Settings</div>
+      <button class="btn-icon" id="closeAiSettings">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <p class="topics-modal-sub">Choose your AI provider for detecting topics, sentiments, and granular subtopics</p>
+
+    <!-- Provider Selection Tabs -->
+    <div class="ai-provider-tabs">
+      <button class="ai-tab active" data-provider="gemini" id="tabGemini">
+        <span class="ai-tab-logo">&#9670;</span> Gemini
+      </button>
+      <button class="ai-tab" data-provider="openai" id="tabOpenAI">
+        <span class="ai-tab-logo">&#9711;</span> OpenAI
+      </button>
+      <button class="ai-tab" data-provider="ollama" id="tabOllama">
+        <span class="ai-tab-logo">&#9685;</span> Ollama
+      </button>
+      <button class="ai-tab" data-provider="none" id="tabNone">
+        <span class="ai-tab-logo">&#9675;</span> Off
+      </button>
+    </div>
+
+    <!-- Gemini Panel -->
+    <div class="ai-panel" id="panelGemini">
+      <div class="ai-field-group">
+        <label class="ai-label">Gemini API Key</label>
+        <input type="password" id="geminiKey" class="ai-input" placeholder="AIza..." autocomplete="off" />
+        <span class="ai-hint">Get a free API key at <a href="https://aistudio.google.com" target="_blank" rel="noreferrer">aistudio.google.com</a></span>
+      </div>
+      <div class="ai-field-group">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <label class="ai-label">Model</label>
+          <span class="ai-hint" id="geminiModelHint" style="font-size:0.65rem;color:var(--accent);cursor:pointer">⚡ Auto-detect models</span>
+        </div>
+        <select id="geminiModel" class="ai-input">
+          <option value="gemini-3.6-flash">gemini-3.6-flash (Fast &amp; Free, Recommended)</option>
+          <option value="gemini-3.7-flash">gemini-3.7-flash (Latest)</option>
+          <option value="gemini-3.6-pro">gemini-3.6-pro (High Capability)</option>
+          <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+          <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- OpenAI Panel -->
+    <div class="ai-panel hidden" id="panelOpenAI">
+      <div class="ai-field-group">
+        <label class="ai-label">OpenAI API Key</label>
+        <input type="password" id="openaiKey" class="ai-input" placeholder="sk-..." autocomplete="off" />
+        <span class="ai-hint">Get your API key at <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer">platform.openai.com</a></span>
+      </div>
+      <div class="ai-field-group">
+        <label class="ai-label">Model</label>
+        <select id="openaiModel" class="ai-input">
+          <option value="gpt-4o-mini">gpt-4o-mini (Fast &amp; Efficient)</option>
+          <option value="gpt-4o">gpt-4o (Most Capable)</option>
+          <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Ollama Panel (Local) -->
+    <div class="ai-panel hidden" id="panelOllama">
+      <div class="ai-field-group">
+        <label class="ai-label">Ollama Host URL</label>
+        <input type="text" id="ollamaUrl" class="ai-input" placeholder="http://localhost:11434" value="http://localhost:11434" />
+        <span class="ai-hint">Ensure Ollama is running: <code>ollama serve</code></span>
+      </div>
+      <div class="ai-field-group">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <label class="ai-label">Installed Models</label>
+          <span class="ai-hint" id="ollamaModelHint" style="font-size:0.65rem;color:var(--accent);cursor:pointer">⚡ Auto-detect local models</span>
+        </div>
+        <select id="ollamaModelSelect" class="ai-input">
+          <option value="llama3">llama3</option>
+          <option value="llama3.1">llama3.1</option>
+          <option value="llama3.2">llama3.2</option>
+          <option value="mistral">mistral</option>
+          <option value="phi3">phi3</option>
+          <option value="gemma2">gemma2</option>
+          <option value="qwen2.5">qwen2.5</option>
+          <option value="custom">-- Custom / Other Model --</option>
+        </select>
+        <input type="text" id="ollamaModel" class="ai-input hidden" placeholder="Enter custom model name..." value="llama3" style="margin-top:6px" />
+        <span class="ai-hint">If browser blocks connection, run in terminal: <code>OLLAMA_ORIGINS="*" ollama serve</code></span>
+      </div>
+    </div>
+
+    <!-- None / Built-in Keyword Panel -->
+    <div class="ai-panel hidden" id="panelNone">
+      <div class="ai-off-msg">
+        &#128683; AI Cloud Features Disabled<br>
+        <span>Folio will use local keyword matching &amp; phrase extraction. No API key required.</span>
+      </div>
+    </div>
+
+    <!-- Connection Status & Actions -->
+    <div class="ai-status-row">
+      <span class="ai-status-dot" id="aiStatusDot"></span>
+      <span class="ai-status-text" id="aiStatusText">Not configured</span>
+    </div>
+    <div class="modal-actions" style="margin-top:18px">
+      <button class="btn-secondary" id="testAiBtn">Test Connection</button>
+      <button class="btn-primary" id="saveAiSettings" style="font-size:.85rem;padding:9px 22px">Save &amp; Apply</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,1665 @@
+/* ═══════════════════════════════════════════════════════════════════
+   FOLIO — Journal App Logic v3.2 (Optimized & Verified)
+   ═══════════════════════════════════════════════════════════════════ */
+
+'use strict';
+
+// ─── CONSTANTS & STORAGE KEYS ─────────────────────────────────────────────────
+const STORAGE_KEY = 'folio_entries_v2';
+const PREFS_KEY   = 'folio_prefs_v1';
+const AI_KEY      = 'folio_ai_cfg_v1';
+
+const STOP_WORDS = new Set([
+  'a','an','the','and','or','but','in','on','at','to','for','of','with',
+  'by','from','is','was','are','were','be','been','being','have','has',
+  'had','do','does','did','will','would','could','should','may','might',
+  'shall','must','can','i','me','my','myself','we','our','us','you',
+  'your','he','she','it','its','they','them','their','this','that',
+  'these','those','what','which','who','how','when','where','why',
+  'if','then','so','not','no','up','out','as','into','about','also',
+  'just','more','some','all','any','one','two','than','too','very',
+  'get','got','go','went','said','make','know','think','see','come',
+  'his','her','its','been','after','before','over','again','each'
+]);
+
+const MOOD_LABELS = {
+  happy:'Happy', grateful:'Grateful', calm:'Calm', reflective:'Reflective',
+  tired:'Tired', anxious:'Anxious', frustrated:'Frustrated', sad:'Sad',
+  excited:'Excited', motivated:'Motivated', overwhelmed:'Overwhelmed', inspired:'Inspired'
+};
+const MOOD_EMOJIS = {
+  happy:'😊', grateful:'🥰', calm:'😌', reflective:'🤔',
+  tired:'😴', anxious:'😟', frustrated:'😤', sad:'😢',
+  excited:'🤩', motivated:'💪', overwhelmed:'🤯', inspired:'✨'
+};
+
+const TOPIC_KEYWORDS = {
+  career:        ['job','work','career','boss','office','promotion','salary','interview','deadline','project','colleague','meeting','fired','hired','resume','linkedin','startup','manager','employee','coworker','company','client','presentation','raise','layoff','quit'],
+  health:        ['sleep','tired','sick','doctor','hospital','exercise','gym','workout','pain','mental','anxiety','medicine','medication','eat','diet','weight','body','healthy','headache','stress','therapy','therapist','breathing','symptoms','fit','wellness'],
+  relationships: ['friend','friendship','relationship','partner','girlfriend','boyfriend','spouse','wife','husband','date','dating','love','miss','loneliness','lonely','trust','argue','argument','fight','jealous','communication','boundary','support','social'],
+  family:        ['mom','dad','mother','father','sister','brother','parent','child','kid','family','grandma','grandpa','aunt','uncle','cousin','home','holiday','dinner','sibling','relative','baby','daughter','son'],
+  romance:       ['crush','romantic','love','heart','kiss','date','valentine','attraction','flirt','feelings','breakup','ex','jealous','intimate','affection','soulmate','marriage','wedding'],
+  finance:       ['money','budget','savings','debt','pay','rent','bills','expensive','cheap','invest','investment','salary','loan','bank','credit','afford','spend','broke','rich','wealth','financial','mortgage','taxes','income'],
+  creativity:    ['write','writing','art','artist','music','draw','paint','design','create','poem','poetry','story','novel','song','creativity','project','idea','inspiration','craft','photography','film','dance','sketch'],
+  education:     ['school','study','class','university','college','degree','exam','homework','teacher','professor','learn','lecture','grade','student','course','assignment','major','graduate','research','thesis','knowledge'],
+  travel:        ['travel','trip','vacation','flight','airport','city','country','abroad','explore','adventure','hotel','tourist','culture','passport','backpack','roadtrip','destination','beach','mountain','journey'],
+  hobbies:       ['game','gaming','cook','cooking','recipe','garden','gardening','hike','hiking','bike','cycling','sport','movie','show','netflix','series','read','book','podcast','hobby','collect','photography','diy','knit'],
+  'self-care':   ['meditate','meditation','rest','relax','journal','gratitude','mindful','mindfulness','spa','bath','walk','nature','breathe','calm','peace','quiet','nap','reflect','morning','routine','ritual','recharge','burnout'],
+  spirituality:  ['god','pray','prayer','faith','spiritual','soul','universe','grateful','blessing','karma','church','mosque','temple','believe','purpose','meaning','destiny','energy','enlighten'],
+  growth:        ['goal','progress','improve','challenge','habit','discipline','learn','better','growth','potential','confidence','mindset','change','transform','overcome','achieve','success','motivation','ambition','future','plan','dream']
+};
+
+const TONE_KEYWORDS = {
+  worried:     ['worried','worry','nervous','scared','fear','afraid','concern','uncertain','doubt','dread','panic'],
+  anxious:     ['anxious','anxiety','stress','stressed','tense','uneasy','restless','apprehensive'],
+  excited:     ['excited','amazing','thrilled','awesome','great','fantastic','wow','incredible','yay','pumped','stoked'],
+  hopeful:     ['hope','hopeful','optimistic','looking forward','better','soon','maybe','potential','positive'],
+  grateful:    ['grateful','thankful','blessed','appreciate','lucky','fortunate','gratitude','glad'],
+  sad:         ['sad','sadness','cry','crying','tears','depressed','depression','miserable','down','grief','loss','unhappy'],
+  frustrated:  ['frustrated','frustration','annoyed','irritated','angry','anger','mad','upset','ugh'],
+  desperate:   ['desperate','helpless','hopeless','lost','stuck','trapped','giving up'],
+  inspired:    ['inspired','inspiration','motivated','creative','idea','eureka','suddenly','realized'],
+  calm:        ['calm','peaceful','serene','quiet','settled','centered','balanced','okay','fine','grounded'],
+  overwhelmed: ['overwhelmed','too much','swamped','exhausted','burnt out','burnout'],
+  nostalgic:   ['miss','used to','remember','memory','memories','back then','childhood','old days','past'],
+  proud:       ['proud','achievement','accomplished','did it','success','finally','milestone'],
+  confused:    ['confused','unsure','unclear','wondering','question','not sure','conflicted'],
+  content:     ['content','satisfied','enough','happy with','at peace','comfortable','fulfilled']
+};
+
+const TOPIC_COLORS = {
+  career:'#4a9eff', health:'#4ade80', relationships:'#f472b6',
+  finance:'#fbbf24', creativity:'#a78bfa', family:'#fb923c',
+  romance:'#f87171', education:'#34d399', spirituality:'#c084fc',
+  travel:'#38bdf8', hobbies:'#a3e635', 'self-care':'#f9a8d4',
+  growth:'#2dd4bf', default:'#9ca3af'
+};
+
+// ─── STATE MANAGEMENT ────────────────────────────────────────────────────────
+let entries           = [];
+let currentId         = null;
+let calViewDate       = new Date();
+let saveTimer         = null;
+let searchQuery       = '';
+let currentFont       = 'lora';
+let previewMode       = false;
+let activeTopicFilter = null;
+let selectedProvider  = 'gemini';
+
+let aiConfig = {
+  provider:    'gemini',
+  geminiKey:   '',
+  geminiModel: 'gemini-3.6-flash',
+  openaiKey:   '',
+  openaiModel: 'gpt-4o-mini',
+  ollamaUrl:   'http://localhost:11434',
+  ollamaModel: 'llama3'
+};
+
+// Safe DOM Helper
+const byId = id => document.getElementById(id);
+
+// ─── LOCAL STORAGE HELPERS ────────────────────────────────────────────────────
+function loadAiConfig() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(AI_KEY) || '{}');
+    Object.assign(aiConfig, saved);
+    if (saved.provider) selectedProvider = saved.provider;
+  } catch(e) {}
+}
+function saveAiConfig() {
+  try { localStorage.setItem(AI_KEY, JSON.stringify(aiConfig)); } catch(e) {}
+}
+
+function loadEntries() {
+  try { entries = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch(e) { entries = []; }
+}
+function saveEntries() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(entries)); } catch(e) {}
+}
+
+function loadPrefs() {
+  try {
+    const p = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}');
+    if (p.font) setFont(p.font, false);
+    if (p.lastId) currentId = p.lastId;
+  } catch(e) {}
+}
+function savePrefs() {
+  try { localStorage.setItem(PREFS_KEY, JSON.stringify({ font: currentFont, lastId: currentId })); } catch(e) {}
+}
+
+// ─── UTILITY FUNCTIONS ────────────────────────────────────────────────────────
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+function formatDate(iso) { return new Date(iso).toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' }); }
+function formatShortDate(iso) { return new Date(iso).toLocaleDateString('en-US', { month:'short', day:'numeric' }); }
+function isoDate(d = new Date()) { return d.toISOString().slice(0, 10); }
+
+function plainText(md) {
+  return (md || '')
+    .replace(/#{1,6}\s+/g, '')
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/\*(.*?)\*/g, '$1')
+    .replace(/_(.*?)_/g, '$1')
+    .replace(/`(.*?)`/g, '$1')
+    .replace(/>\s?/g, '')
+    .replace(/[-*]\s+/g, '')
+    .replace(/\d+\.\s+/g, '')
+    .replace(/---+/g, '')
+    .trim();
+}
+
+function countWords(t)     { const p = plainText(t).trim(); return p ? p.split(/\s+/).filter(w => w.length > 0).length : 0; }
+function countSentences(t) { const p = plainText(t).trim(); return p ? (p.match(/[.!?]+/g) || []).length || (p.length ? 1 : 0) : 0; }
+function getUniqueWords(t) { const w = plainText(t).toLowerCase().split(/[\s,.!?;:'"()\-—]+/).filter(w => w.length > 2 && /^[a-z]+$/.test(w)); return new Set(w); }
+function readTime(t)       { return Math.max(1, Math.ceil(countWords(t) / 200)); }
+
+function getTopWords(t, n = 15) {
+  const words = plainText(t).toLowerCase().split(/[\s,.!?;:'"()\-—]+/).filter(w => w.length > 3 && /^[a-z]+$/.test(w) && !STOP_WORDS.has(w));
+  const freq = {};
+  words.forEach(w => freq[w] = (freq[w] || 0) + 1);
+  return Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, n);
+}
+
+// ─── LOCAL KEYWORD & SUBTOPIC DETECTION ───────────────────────────────────────
+function detectTopicsLocal(text) {
+  const lower = plainText(text).toLowerCase();
+  const words = lower.split(/[\s,.!?;:'"()\-—]+/);
+  const wordSet = new Set(words);
+
+  const topicScores = {};
+  for (const [topic, kws] of Object.entries(TOPIC_KEYWORDS)) {
+    let score = 0;
+    for (const kw of kws) {
+      if (kw.includes(' ')) { if (lower.includes(kw)) score += 2; }
+      else if (wordSet.has(kw)) score += 1;
+    }
+    if (score > 0) topicScores[topic] = score;
+  }
+
+  const toneScores = {};
+  for (const [tone, kws] of Object.entries(TONE_KEYWORDS)) {
+    let score = 0;
+    for (const kw of kws) {
+      if (lower.includes(kw)) score += 1;
+    }
+    if (score > 0) toneScores[tone] = score;
+  }
+
+  const sortedTopics = Object.entries(topicScores).sort((a, b) => b[1] - a[1]).slice(0, 4);
+  const sortedTones  = Object.entries(toneScores).sort((a, b) => b[1] - a[1]);
+  const primaryTone  = sortedTones[0]?.[0] || 'reflective';
+
+  return sortedTopics.map(([topic]) => ({
+    topic,
+    tone: primaryTone,
+    confidence: 0.7,
+    source: 'local'
+  }));
+}
+
+function extractSubtopicsLocal(text) {
+  const lower = plainText(text).toLowerCase();
+  const words = lower
+    .split(/[\s,.!?;:'"()\[\]\-—]+/)
+    .filter(w => w.length > 3 && /^[a-z]+$/.test(w) && !STOP_WORDS.has(w));
+
+  if (words.length < 3) return [];
+
+  const ngrams = {};
+  for (let i = 0; i < words.length - 1; i++) {
+    const bi = words[i] + '-' + words[i+1];
+    ngrams[bi] = (ngrams[bi] || 0) + 1;
+    if (i < words.length - 2) {
+      const tri = words[i] + '-' + words[i+1] + '-' + words[i+2];
+      ngrams[tri] = (ngrams[tri] || 0) + 1;
+    }
+  }
+
+  const candidates = Object.entries(ngrams)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([phrase]) => phrase);
+
+  if (candidates.length < 2) {
+    const freq = {};
+    words.forEach(w => freq[w] = (freq[w] || 0) + 1);
+    Object.entries(freq)
+      .filter(([w, c]) => c >= 2 && !candidates.some(c2 => c2.includes(w)))
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .forEach(([w]) => candidates.push(w));
+  }
+
+  return [...new Set(candidates)].slice(0, 5);
+}
+
+// ─── AI API INTEGRATION ───────────────────────────────────────────────────────
+const AI_PROMPT = (content) => `You are a thoughtful journaling assistant. Analyze this journal entry and respond with ONLY valid JSON — no markdown, no explanation.
+
+Return this exact structure:
+{
+  "topics": [
+    {"topic": "career", "tone": "worried"},
+    {"topic": "relationships", "tone": "hopeful"}
+  ],
+  "subtopics": ["job-interview-prep", "girlfriend-problems", "building-ai-app"],
+  "summary": "One sentence that captures the emotional core of this entry.",
+  "dominant_emotion": "anxious"
+}
+
+Rules:
+- topics (pick 1–4 that genuinely apply): career, health, relationships, family, romance, finance, creativity, education, travel, hobbies, self-care, spirituality, growth
+- tones (pick 1 per topic): worried, anxious, excited, hopeful, grateful, sad, frustrated, desperate, inspired, calm, overwhelmed, nostalgic, proud, confused, content
+- subtopics: 2–6 SPECIFIC, granular hyphenated tags describing exact subjects (e.g. girlfriend-problems, building-ai-app, home-automation, gym-plateau, salary-negotiation).
+- summary: 1 sentence, empathetic.
+
+Journal Entry:
+---
+${content.slice(0, 3000)}
+---`;
+
+function cleanJsonResponse(rawText) {
+  if (!rawText || !rawText.trim()) {
+    throw new Error('Received empty response from AI model');
+  }
+  let text = rawText.trim();
+
+  // Strip code fences
+  text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+
+  // 1. First attempt: standard JSON.parse
+  try {
+    return JSON.parse(text);
+  } catch (e) {}
+
+  // 2. Second attempt: extract outermost { ... } block & clean common syntax errors
+  const firstBrace = text.indexOf('{');
+  const lastBrace  = text.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    const candidate = text.slice(firstBrace, lastBrace + 1);
+    try {
+      return JSON.parse(candidate);
+    } catch (e) {}
+
+    // Fix trailing commas and unquoted properties
+    try {
+      const fixed = candidate
+        .replace(/,\s*([}\]])/g, '$1') // remove trailing commas before } or ]
+        .replace(/[\u201C\u201D]/g, '"') // replace curly quotes
+        .replace(/[\u2018\u2019]/g, "'");
+      return JSON.parse(fixed);
+    } catch (e) {}
+  }
+
+  // 3. Third attempt: lenient regex extraction for structured fields
+  try {
+    const topics = [];
+    const topicRegex = /\{\s*"topic"\s*:\s*"([^"]+)"\s*,\s*"tone"\s*:\s*"([^"]+)"\s*\}/gi;
+    let m;
+    while ((m = topicRegex.exec(text)) !== null) {
+      topics.push({ topic: m[1].toLowerCase().trim(), tone: m[2].toLowerCase().trim() });
+    }
+
+    const subtopics = [];
+    const subMatch = text.match(/"subtopics"\s*:\s*\[([^\]]*)\]/i);
+    if (subMatch) {
+      const tagRegex = /"([^"]+)"/g;
+      let tm;
+      while ((tm = tagRegex.exec(subMatch[1])) !== null) {
+        subtopics.push(tm[1].replace(/^#/, '').toLowerCase().trim());
+      }
+    }
+
+    const summaryMatch = text.match(/"summary"\s*:\s*"([^"]+)"/i);
+    const emotionMatch = text.match(/"dominant_emotion"\s*:\s*"([^"]+)"/i);
+
+    if (topics.length > 0 || subtopics.length > 0) {
+      return {
+        topics,
+        subtopics,
+        summary: summaryMatch ? summaryMatch[1] : '',
+        dominant_emotion: emotionMatch ? emotionMatch[1] : ''
+      };
+    }
+  } catch (e) {}
+
+  throw new Error('Could not parse AI response as JSON');
+}
+
+async function fetchGeminiModels(apiKey) {
+  if (!apiKey) return [];
+  try {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.models || [])
+      .filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes('generateContent'))
+      .map(m => m.name.replace(/^models\//, ''));
+  } catch(e) {
+    return [];
+  }
+}
+
+function updateGeminiModelDropdown(models, currentVal) {
+  const select = byId('geminiModel');
+  if (!select || !models || models.length === 0) return;
+  const preferred = currentVal || aiConfig.geminiModel || 'gemini-3.6-flash';
+  select.innerHTML = models.map(m => `
+    <option value="${m}" ${m === preferred ? 'selected' : ''}>${m}</option>
+  `).join('');
+  if (models.includes(preferred)) {
+    select.value = preferred;
+  } else if (models.length > 0) {
+    select.value = models[0];
+  }
+}
+
+async function callGemini(content) {
+  if (!aiConfig.geminiKey) throw new Error('Please enter a Gemini API Key in Settings ⚙');
+  
+  let targetModel = aiConfig.geminiModel || 'gemini-3.6-flash';
+  
+  // Array of models to try in case selected model fails with 404/not found
+  const candidateModels = [
+    targetModel,
+    'gemini-3.6-flash',
+    'gemini-3.7-flash',
+    'gemini-3.6-pro',
+    'gemini-2.5-flash',
+    'gemini-2.0-flash'
+  ];
+  const uniqueModels = [...new Set(candidateModels)];
+
+  const body = {
+    contents: [{ parts: [{ text: AI_PROMPT(content) }] }],
+    generationConfig: {
+      temperature: 0.2,
+      maxOutputTokens: 1024,
+      responseMimeType: "application/json"
+    }
+  };
+
+  let lastError = null;
+
+  for (const model of uniqueModels) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${aiConfig.geminiKey}`;
+    try {
+      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (res.ok) {
+        const data = await res.json();
+        const candidate = data.candidates?.[0];
+        if (!candidate) {
+          const blockReason = data.promptFeedback?.blockReason || 'No candidate response returned';
+          throw new Error(`Gemini blocked: ${blockReason}`);
+        }
+        const text = candidate.content?.parts?.map(p => p.text || '').join('') || '';
+        if (!text.trim()) {
+          throw new Error(`Gemini returned empty response (${candidate.finishReason || 'unknown'})`);
+        }
+        // If this model worked and differed from configured, update config
+        if (model !== aiConfig.geminiModel) {
+          aiConfig.geminiModel = model;
+          saveAiConfig();
+          const select = byId('geminiModel');
+          if (select) select.value = model;
+        }
+        return cleanJsonResponse(text);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        const msg = err.error?.message || `HTTP ${res.status}`;
+        lastError = new Error(msg);
+        // Only try next candidate if model was not found
+        if (!msg.toLowerCase().includes('not found') && !msg.toLowerCase().includes('is not supported')) {
+          throw lastError;
+        }
+      }
+    } catch(e) {
+      lastError = e;
+      if (!e.message.toLowerCase().includes('not found') && !e.message.toLowerCase().includes('is not supported')) {
+        throw e;
+      }
+    }
+  }
+
+  throw lastError || new Error('Failed to generate content with Gemini');
+}
+
+async function callOpenAI(content) {
+  if (!aiConfig.openaiKey) throw new Error('Please enter an OpenAI API Key in Settings ⚙');
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${aiConfig.openaiKey}` },
+    body: JSON.stringify({
+      model: aiConfig.openaiModel,
+      messages: [{ role: 'user', content: AI_PROMPT(content) }],
+      temperature: 0.2,
+      max_tokens: 512,
+      response_format: { type: 'json_object' }
+    })
+  });
+  if (!res.ok) {
+    let msg = `OpenAI HTTP ${res.status}`;
+    try { const err = await res.json(); msg = err.error?.message || msg; } catch(e) {}
+    throw new Error(msg);
+  }
+  const data = await res.json();
+  return cleanJsonResponse(data.choices?.[0]?.message?.content || '');
+}
+
+async function fetchOllamaModels(baseUrl = 'http://localhost:11434') {
+  const cleanUrl = (baseUrl || 'http://localhost:11434').replace(/\/$/, '');
+  try {
+    const res = await fetch(`${cleanUrl}/api/tags`);
+    if (!res.ok) throw new Error(`Ollama server returned HTTP ${res.status}`);
+    const data = await res.json();
+    return (data.models || []).map(m => m.name);
+  } catch (e) {
+    let msg = e.message || 'Cannot reach Ollama server';
+    if (msg === 'Failed to fetch' || e.name === 'TypeError') {
+      msg = 'Connection blocked. Run: OLLAMA_ORIGINS="*" ollama serve';
+    }
+    throw new Error(msg);
+  }
+}
+
+function updateOllamaModelDropdown(models, currentVal) {
+  const select = byId('ollamaModelSelect');
+  const customInput = byId('ollamaModel');
+  if (!select) return;
+
+  const activeModel = currentVal || aiConfig.ollamaModel || 'llama3';
+
+  if (!models || models.length === 0) {
+    select.innerHTML = `
+      <option value="llama3">llama3</option>
+      <option value="llama3.1">llama3.1</option>
+      <option value="llama3.2">llama3.2</option>
+      <option value="mistral">mistral</option>
+      <option value="phi3">phi3</option>
+      <option value="gemma2">gemma2</option>
+      <option value="qwen2.5">qwen2.5</option>
+      <option value="custom">-- Custom / Other Model --</option>
+    `;
+    if (['llama3','llama3.1','llama3.2','mistral','phi3','gemma2','qwen2.5'].includes(activeModel)) {
+      select.value = activeModel;
+      if (customInput) customInput.classList.add('hidden');
+    } else {
+      select.value = 'custom';
+      if (customInput) {
+        customInput.classList.remove('hidden');
+        customInput.value = activeModel;
+      }
+    }
+    return;
+  }
+
+  const modelOptions = models.map(m => `
+    <option value="${m}" ${m === activeModel ? 'selected' : ''}>${m}</option>
+  `).join('') + `<option value="custom" ${!models.includes(activeModel) ? 'selected' : ''}>-- Custom / Other Model --</option>`;
+
+  select.innerHTML = modelOptions;
+
+  if (models.includes(activeModel)) {
+    select.value = activeModel;
+    if (customInput) customInput.classList.add('hidden');
+  } else {
+    select.value = 'custom';
+    if (customInput) {
+      customInput.classList.remove('hidden');
+      customInput.value = activeModel;
+    }
+  }
+}
+
+async function callOllama(content) {
+  const baseUrl = (aiConfig.ollamaUrl || 'http://localhost:11434').replace(/\/$/, '');
+  const url = `${baseUrl}/api/chat`;
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: aiConfig.ollamaModel || 'llama3',
+        messages: [{ role: 'user', content: AI_PROMPT(content) }],
+        stream: false,
+        format: 'json',
+        options: { temperature: 0.2 }
+      })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `Ollama HTTP ${res.status} — verify model name`);
+    }
+    const data = await res.json();
+    const text = data.message?.content || data.response || '';
+    return cleanJsonResponse(text);
+  } catch (e) {
+    if (e.message === 'Failed to fetch' || e.name === 'TypeError') {
+      throw new Error('Cannot connect to Ollama. Start with: OLLAMA_ORIGINS="*" ollama serve');
+    }
+    throw e;
+  }
+}
+
+async function analyzeWithAI(content) {
+  if (!content.trim() || countWords(content) < 3) return null;
+  switch (aiConfig.provider) {
+    case 'gemini': return await callGemini(content);
+    case 'openai': return await callOpenAI(content);
+    case 'ollama': return await callOllama(content);
+    default:       return null;
+  }
+}
+
+// ─── AI SETTINGS MODAL HANDLERS ───────────────────────────────────────────────
+function openAiSettings() {
+  loadAiConfig();
+  selectedProvider = aiConfig.provider || 'gemini';
+
+  const gKey   = byId('geminiKey');
+  const gModel = byId('geminiModel');
+  const oKey   = byId('openaiKey');
+  const oModel = byId('openaiModel');
+  const lUrl   = byId('ollamaUrl');
+  const lModel = byId('ollamaModel');
+
+  if (gKey)   gKey.value   = aiConfig.geminiKey || '';
+  if (gModel) gModel.value = aiConfig.geminiModel || 'gemini-3.6-flash';
+  if (oKey)   oKey.value   = aiConfig.openaiKey || '';
+  if (oModel) oModel.value = aiConfig.openaiModel || 'gpt-4o-mini';
+  if (lUrl)   lUrl.value   = aiConfig.ollamaUrl || 'http://localhost:11434';
+  if (lModel) lModel.value = aiConfig.ollamaModel || 'llama3';
+
+  // If Gemini key is saved, auto-fetch supported models
+  if (aiConfig.geminiKey) {
+    fetchGeminiModels(aiConfig.geminiKey).then(models => {
+      if (models && models.length > 0) updateGeminiModelDropdown(models, aiConfig.geminiModel);
+    });
+  }
+
+  // Pre-fetch Ollama models
+  fetchOllamaModels(aiConfig.ollamaUrl || 'http://localhost:11434').then(models => {
+    updateOllamaModelDropdown(models, aiConfig.ollamaModel);
+  }).catch(() => {
+    updateOllamaModelDropdown([], aiConfig.ollamaModel);
+  });
+
+  switchAiTab(selectedProvider);
+  updateAiStatus();
+
+  const modal = byId('aiSettingsModal');
+  if (modal) modal.classList.remove('hidden');
+}
+
+function switchAiTab(provider) {
+  selectedProvider = provider;
+  document.querySelectorAll('.ai-tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.provider === provider);
+  });
+
+  const panelMap = { gemini: 'panelGemini', openai: 'panelOpenAI', ollama: 'panelOllama', none: 'panelNone' };
+  ['panelGemini', 'panelOpenAI', 'panelOllama', 'panelNone'].forEach(id => {
+    const el = byId(id);
+    if (el) el.classList.add('hidden');
+  });
+
+  const targetId = panelMap[provider];
+  if (targetId && byId(targetId)) {
+    byId(targetId).classList.remove('hidden');
+  }
+}
+
+function updateAiStatus(state = 'idle', customMsg = '') {
+  const dot  = byId('aiStatusDot');
+  const text = byId('aiStatusText');
+  if (!dot || !text) return;
+
+  dot.className = 'ai-status-dot';
+  if (state === 'testing') {
+    dot.classList.add('testing');
+    text.textContent = 'Testing connection...';
+    return;
+  }
+  if (state === 'ok') {
+    dot.classList.add('ok');
+    text.textContent = customMsg || `Connected to ${selectedProvider}`;
+    return;
+  }
+  if (state === 'error') {
+    dot.classList.add('error');
+    text.textContent = customMsg || 'Connection failed';
+    return;
+  }
+
+  // Idle check
+  if (aiConfig.provider === 'none') {
+    text.textContent = 'AI features disabled — using keyword matching';
+  } else if ((aiConfig.provider === 'gemini' && aiConfig.geminiKey) ||
+             (aiConfig.provider === 'openai' && aiConfig.openaiKey) ||
+             (aiConfig.provider === 'ollama')) {
+    dot.classList.add('ok');
+    text.textContent = `${aiConfig.provider} configured (${aiConfig[aiConfig.provider + 'Model'] || ''})`;
+  } else {
+    text.textContent = 'Not configured — enter API key';
+  }
+}
+
+async function testAiConnection() {
+  updateAiStatus('testing');
+
+  // Read current input values
+  const gKey   = byId('geminiKey')?.value.trim() || '';
+  const gModel = byId('geminiModel')?.value || 'gemini-3.6-flash';
+  const oKey   = byId('openaiKey')?.value.trim() || '';
+  const oModel = byId('openaiModel')?.value || 'gpt-4o-mini';
+  const lUrl   = byId('ollamaUrl')?.value.trim() || 'http://localhost:11434';
+  
+  const ollamaSelect = byId('ollamaModelSelect');
+  const ollamaCustom = byId('ollamaModel');
+  const lModel = (ollamaSelect?.value === 'custom' ? ollamaCustom?.value.trim() : ollamaSelect?.value) || ollamaCustom?.value.trim() || 'llama3';
+
+  // Apply to config for testing
+  aiConfig.provider    = selectedProvider;
+  aiConfig.geminiKey   = gKey;
+  aiConfig.geminiModel = gModel;
+  aiConfig.openaiKey   = oKey;
+  aiConfig.openaiModel = oModel;
+  aiConfig.ollamaUrl   = lUrl;
+  aiConfig.ollamaModel = lModel;
+
+  if (selectedProvider === 'none') {
+    updateAiStatus('idle', 'Local keyword matching selected');
+    saveAiConfig();
+    return;
+  }
+
+  try {
+    const sample = "Had a productive day working on web applications and enjoying fitness.";
+    const result = await analyzeWithAI(sample);
+
+    if (result && result.topics) {
+      saveAiConfig();
+      updateAiStatus('ok', `✓ Success! Connected to ${selectedProvider} (${aiConfig[selectedProvider + 'Model'] || ''})`);
+      updateAiBtnLabel();
+    } else {
+      updateAiStatus('error', 'Connected but got unexpected response format');
+    }
+  } catch(err) {
+    updateAiStatus('error', `✗ ${err.message}`);
+  }
+}
+
+function saveAiSettingsHandler() {
+  const ollamaSelect = byId('ollamaModelSelect');
+  const ollamaCustom = byId('ollamaModel');
+  const lModel = (ollamaSelect?.value === 'custom' ? ollamaCustom?.value.trim() : ollamaSelect?.value) || ollamaCustom?.value.trim() || 'llama3';
+
+  aiConfig.provider    = selectedProvider;
+  aiConfig.geminiKey   = byId('geminiKey')?.value.trim() || '';
+  aiConfig.geminiModel = byId('geminiModel')?.value || 'gemini-3.6-flash';
+  aiConfig.openaiKey   = byId('openaiKey')?.value.trim() || '';
+  aiConfig.openaiModel = byId('openaiModel')?.value || 'gpt-4o-mini';
+  aiConfig.ollamaUrl   = byId('ollamaUrl')?.value.trim() || 'http://localhost:11434';
+  aiConfig.ollamaModel = lModel;
+
+  saveAiConfig();
+  updateAiStatus();
+  updateAiBtnLabel();
+
+  const modal = byId('aiSettingsModal');
+  if (modal) modal.classList.add('hidden');
+}
+
+function updateAiBtnLabel() {
+  const btn = byId('aiAnalyzeBtn');
+  if (!btn) return;
+  const lbl = btn.querySelector('.ai-btn-label');
+  if (!lbl) return;
+  const providerShort = { gemini:'Gemini', openai:'OpenAI', ollama:'Ollama', none:'' };
+  const label = providerShort[aiConfig.provider] || '';
+  lbl.textContent = label ? `Analyze · ${label}` : 'Analyze';
+}
+
+// ─── ENTRY CRUD & RENDER ──────────────────────────────────────────────────────
+function createEntry() {
+  const now = new Date();
+  const entry = {
+    id: uid(),
+    title: '',
+    content: '',
+    mood: null,
+    topics: [],
+    subtopics: [],
+    aiSummary: '',
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+    date: isoDate(now)
+  };
+  entries.unshift(entry);
+  saveEntries();
+  return entry;
+}
+
+function getEntry(id) { return entries.find(e => e.id === id); }
+function deleteEntry(id) { entries = entries.filter(e => e.id !== id); saveEntries(); }
+
+function updateCurrent() {
+  const entry = getEntry(currentId);
+  if (!entry) return;
+  entry.title = byId('entryTitle')?.value.trim() || '';
+  entry.content = byId('editorTextarea')?.value || '';
+  entry.updatedAt = new Date().toISOString();
+}
+
+function renderTopicChips(topicsArr, container) {
+  if (!container) return;
+  if (!topicsArr || topicsArr.length === 0) {
+    container.innerHTML = `<span style="font-size:.72rem;color:var(--text-muted);font-style:italic">No topics detected — click ✨ Analyze</span>`;
+    return;
+  }
+  container.innerHTML = topicsArr.map(({ topic, tone }) => `
+    <span class="topic-chip topic-${topic} tone-${tone}" data-topic="${topic}" title="Click to filter by ${topic} · ${tone}">
+      <span class="chip-topic">${topic}</span>
+      <span class="chip-tone">${tone}</span>
+    </span>
+  `).join('');
+
+  container.querySelectorAll('.topic-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const topic = chip.dataset.topic;
+      if (activeTopicFilter === topic) {
+        activeTopicFilter = null;
+        byId('clearTopicFilter')?.classList.add('hidden');
+      } else {
+        activeTopicFilter = topic;
+        byId('clearTopicFilter')?.classList.remove('hidden');
+      }
+      renderSidebarTopicFilters();
+      renderEntriesList();
+    });
+  });
+}
+
+function renderSubtopicTags(subtopicsArr, container) {
+  if (!container) return;
+  if (!subtopicsArr || subtopicsArr.length === 0) {
+    container.innerHTML = `<span style="font-size:.7rem;color:var(--text-muted);font-style:italic">—</span>`;
+    return;
+  }
+  container.innerHTML = subtopicsArr.map(tag => {
+    const clean = tag.replace(/[^a-z0-9\-]/gi, '').toLowerCase();
+    return `<span class="subtopic-tag" data-tag="${clean}" title="Click to search #${clean}">#${clean}</span>`;
+  }).join('');
+
+  container.querySelectorAll('.subtopic-tag').forEach(tagEl => {
+    tagEl.addEventListener('click', () => {
+      const searchInput = byId('searchInput');
+      if (searchInput) {
+        searchInput.value = tagEl.dataset.tag;
+        searchQuery = tagEl.dataset.tag;
+        renderEntriesList();
+      }
+    });
+  });
+}
+
+function renderSidebarTopicFilters() {
+  const container = byId('topicFilterBar');
+  if (!container) return;
+
+  const topicCount = {};
+  entries.forEach(e => {
+    (e.topics || []).forEach(t => {
+      topicCount[t.topic] = (topicCount[t.topic] || 0) + 1;
+    });
+  });
+
+  const sorted = Object.entries(topicCount).sort((a, b) => b[1] - a[1]);
+  if (sorted.length === 0) { container.innerHTML = ''; return; }
+
+  container.innerHTML = sorted.map(([topic, count]) => `
+    <button class="topic-filter-chip${activeTopicFilter === topic ? ' active' : ''}" data-topic="${topic}">
+      ${topic} <span style="opacity:.5">${count}</span>
+    </button>
+  `).join('');
+
+  container.querySelectorAll('.topic-filter-chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const t = btn.dataset.topic;
+      if (activeTopicFilter === t) {
+        activeTopicFilter = null;
+        byId('clearTopicFilter')?.classList.add('hidden');
+      } else {
+        activeTopicFilter = t;
+        byId('clearTopicFilter')?.classList.remove('hidden');
+      }
+      renderSidebarTopicFilters();
+      renderEntriesList();
+    });
+  });
+}
+
+async function triggerAnalysis(showThinking = true) {
+  const entry = getEntry(currentId);
+  if (!entry || countWords(entry.content) < 3) return;
+
+  const topicsEl    = byId('entryTopics');
+  const subtopicsEl = byId('entrySubtopics');
+  const btn         = byId('aiAnalyzeBtn');
+
+  if (showThinking && topicsEl && subtopicsEl) {
+    const thinkHTML = `<div style="font-size:.72rem;color:var(--text-muted);font-style:italic">Analyzing...</div>`;
+    topicsEl.innerHTML = thinkHTML;
+    subtopicsEl.innerHTML = thinkHTML;
+    if (btn) btn.classList.add('loading');
+  }
+
+  try {
+    let result = null;
+    if (aiConfig.provider !== 'none') {
+      result = await analyzeWithAI(entry.content);
+    }
+
+    let topics, subtopics, summary;
+    if (result && Array.isArray(result.topics)) {
+      topics    = result.topics;
+      subtopics = Array.isArray(result.subtopics) ? result.subtopics : extractSubtopicsLocal(entry.content);
+      summary   = result.summary || '';
+    } else {
+      topics    = detectTopicsLocal(entry.content);
+      subtopics = extractSubtopicsLocal(entry.content);
+      summary   = '';
+    }
+
+    entry.topics    = topics;
+    entry.subtopics = subtopics;
+    entry.aiSummary = summary;
+    saveEntries();
+
+    renderTopicChips(topics, topicsEl);
+    renderSubtopicTags(subtopics, subtopicsEl);
+    renderSidebarTopicFilters();
+    updateMoodTimeline();
+    renderEntriesList();
+
+  } catch(err) {
+    console.error('AI Analysis Error:', err);
+    const topics    = detectTopicsLocal(entry.content);
+    const subtopics = extractSubtopicsLocal(entry.content);
+    entry.topics    = topics;
+    entry.subtopics = subtopics;
+    saveEntries();
+
+    renderTopicChips(topics, topicsEl);
+    renderSubtopicTags(subtopics, subtopicsEl);
+    renderSidebarTopicFilters();
+
+    if (showThinking && subtopicsEl) {
+      const errBadge = document.createElement('span');
+      errBadge.style.cssText = 'font-size:.65rem;color:#f87171;margin-left:6px';
+      errBadge.textContent = `(Used local: ${err.message})`;
+      subtopicsEl.appendChild(errBadge);
+    }
+  }
+
+  if (btn) {
+    btn.classList.remove('loading');
+    btn.classList.add('ai-active');
+    setTimeout(() => btn.classList.remove('ai-active'), 2000);
+  }
+}
+
+// ─── TOPICS OVERVIEW MODAL ────────────────────────────────────────────────────
+function openTopicsOverview() {
+  const modal = byId('topicsModal');
+  const body  = byId('topicsModalBody');
+  if (!modal || !body) return;
+
+  const topicMap = {};
+  entries.forEach(e => {
+    (e.topics || []).forEach(({ topic, tone }) => {
+      if (!topicMap[topic]) topicMap[topic] = { tones: {}, total: 0 };
+      topicMap[topic].tones[tone] = (topicMap[topic].tones[tone] || 0) + 1;
+      topicMap[topic].total += 1;
+    });
+  });
+
+  const sorted = Object.entries(topicMap).sort((a, b) => b[1].total - a[1].total);
+  const maxCount = sorted[0]?.[1]?.total || 1;
+
+  if (sorted.length === 0) {
+    body.innerHTML = `<div style="text-align:center;padding:32px;color:var(--text-muted);font-size:.85rem">
+      No topics detected yet. Write entries &amp; click <strong>✨ Analyze</strong> to get started.
+    </div>`;
+    modal.classList.remove('hidden');
+    return;
+  }
+
+  let html = '';
+  for (const [topic, data] of sorted) {
+    const color = TOPIC_COLORS[topic] || TOPIC_COLORS.default;
+    const pct   = Math.round((data.total / maxCount) * 100);
+    const tones = Object.entries(data.tones).sort((a, b) => b[1] - a[1]);
+
+    html += `
+    <div class="topic-overview-row" style="margin-bottom:14px">
+      <div class="topic-overview-label" style="display:flex;align-items:center;gap:8px;font-size:.82rem;font-weight:600;text-transform:capitalize">
+        <span style="width:8px;height:8px;border-radius:50%;background:${color}"></span>
+        ${topic}
+        <span style="margin-left:auto;font-size:.7rem;color:var(--text-muted);font-weight:400">${data.total} entries</span>
+      </div>
+      <div style="height:3px;border-radius:99px;background:rgba(255,255,255,0.07);overflow:hidden;margin:4px 0 6px">
+        <div style="height:100%;width:${pct}%;background:${color};border-radius:99px"></div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:5px">
+        ${tones.map(([tone, cnt]) => `
+          <span class="topic-chip topic-${topic} tone-${tone}" data-topic="${topic}">
+            <span class="chip-topic">${topic}</span>
+            <span class="chip-tone">${tone} ×${cnt}</span>
+          </span>
+        `).join('')}
+      </div>
+    </div>`;
+  }
+
+  // All Subtopics
+  const allSubtopics = {};
+  entries.forEach(e => (e.subtopics || []).forEach(s => {
+    allSubtopics[s] = (allSubtopics[s] || 0) + 1;
+  }));
+  const topSubs = Object.entries(allSubtopics).sort((a,b) => b[1] - a[1]).slice(0, 18);
+  if (topSubs.length > 0) {
+    html += `<div style="border-top:1px solid var(--border);padding-top:16px;margin-top:14px">
+      <div style="font-size:.68rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px"># Specific Subtopics</div>
+      <div style="display:flex;flex-wrap:wrap;gap:5px">
+        ${topSubs.map(([s, c]) => `<span class="subtopic-tag" data-tag="${s}" title="${c} entries">#${s}${c>1 ? ` <span style='opacity:.5'>${c}</span>` : ''}</span>`).join('')}
+      </div>
+    </div>`;
+  }
+
+  body.innerHTML = html;
+
+  // Add click to filter from modal
+  body.querySelectorAll('.topic-chip[data-topic]').forEach(chip => {
+    chip.addEventListener('click', () => {
+      activeTopicFilter = chip.dataset.topic;
+      byId('clearTopicFilter')?.classList.remove('hidden');
+      renderSidebarTopicFilters();
+      renderEntriesList();
+      modal.classList.add('hidden');
+    });
+  });
+
+  body.querySelectorAll('.subtopic-tag[data-tag]').forEach(tagEl => {
+    tagEl.addEventListener('click', () => {
+      const searchInput = byId('searchInput');
+      if (searchInput) {
+        searchInput.value = tagEl.dataset.tag;
+        searchQuery = tagEl.dataset.tag;
+        renderEntriesList();
+        modal.classList.add('hidden');
+      }
+    });
+  });
+
+  modal.classList.remove('hidden');
+}
+
+// ─── MARKDOWN RENDERER ────────────────────────────────────────────────────────
+function renderMarkdown(md) {
+  let html = (md || '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>').replace(/^## (.+)$/gm, '<h2>$1</h2>').replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    .replace(/^---+$/gm, '<hr>').replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/__(.+?)__/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>').replace(/_(.+?)_/g, '<em>$1</em>')
+    .replace(/`(.+?)`/g, '<code>$1</code>')
+    .replace(/^\s*[-*]\s+(.+)$/gm, '<li>$1</li>').replace(/^\s*\d+\.\s+(.+)$/gm, '<li>$1</li>')
+    .split('\n').map(line => {
+      if (/^<(h[1-6]|blockquote|hr|li)/.test(line.trim())) return line;
+      if (line.trim() === '') return '<br>';
+      return `<p>${line}</p>`;
+    }).join('\n');
+  return html.replace(/(<li>.*<\/li>\n?)+/g, m => `<ul>${m}</ul>`);
+}
+
+// ─── UI LIST & CALENDAR RENDERING ─────────────────────────────────────────────
+function renderEntriesList() {
+  const container = byId('entriesList');
+  if (!container) return;
+
+  const q = searchQuery.toLowerCase();
+  let filtered = entries.filter(e =>
+    (!q || (e.title || '').toLowerCase().includes(q) || (e.content || '').toLowerCase().includes(q) || (e.subtopics || []).some(s => s.toLowerCase().includes(q))) &&
+    (!activeTopicFilter || (e.topics || []).some(t => t.topic === activeTopicFilter))
+  );
+
+  container.innerHTML = '';
+  if (filtered.length === 0) {
+    container.innerHTML = `<div style="padding:16px;text-align:center;font-size:.78rem;color:var(--text-muted)">No entries found</div>`;
+    return;
+  }
+
+  filtered.forEach(entry => {
+    const el = document.createElement('div');
+    el.className = 'entry-item' + (entry.id === currentId ? ' active' : '');
+    el.dataset.id = entry.id;
+
+    const mood = entry.mood ? MOOD_EMOJIS[entry.mood] : '';
+    const preview = plainText(entry.content).slice(0, 60) || 'Empty entry';
+    const topicChips = (entry.topics || []).slice(0, 2).map(({ topic }) =>
+      `<span style="font-size:.6rem;background:rgba(138,80,255,.15);border:1px solid rgba(138,80,255,.25);border-radius:99px;padding:1px 6px;color:#c8a8ff;margin-right:2px">${topic}</span>`
+    ).join('');
+
+    const subtagChips = (entry.subtopics || []).slice(0, 2).map(t =>
+      `<span style="font-size:.58rem;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:1px 5px;color:var(--text-muted);margin-right:2px;font-family:var(--font-mono)">#${t}</span>`
+    ).join('');
+
+    el.innerHTML = `
+      <div class="entry-item-title">${entry.title || 'Untitled'}</div>
+      <div class="entry-item-meta">
+        <span class="entry-item-mood">${mood}</span>
+        <span>${formatShortDate(entry.createdAt)}</span>
+        ${topicChips}
+      </div>
+      <div class="entry-item-preview">${preview}${preview.length >= 60 ? '…' : ''}</div>
+      ${subtagChips ? `<div style="margin-top:3px">${subtagChips}</div>` : ''}
+    `;
+
+    el.addEventListener('click', () => loadEntry(entry.id));
+    container.appendChild(el);
+  });
+}
+
+function renderCalendar() {
+  const calGrid = byId('calGrid');
+  const calTitle = byId('calTitle');
+  if (!calGrid || !calTitle) return;
+
+  const year  = calViewDate.getFullYear();
+  const month = calViewDate.getMonth();
+  const today = new Date();
+
+  calTitle.textContent = calViewDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+  const entryDates = new Set(entries.map(e => e.date));
+  const firstDay   = new Date(year, month, 1);
+  const lastDay    = new Date(year, month + 1, 0);
+  const startDow   = firstDay.getDay();
+
+  const dayNames = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+  let html = dayNames.map(d => `<div class="cal-day-name">${d}</div>`).join('');
+
+  for (let i = 0; i < startDow; i++) html += `<div class="cal-day empty"></div>`;
+
+  for (let d = 1; d <= lastDay.getDate(); d++) {
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const isToday = today.getFullYear() === year && today.getMonth() === month && today.getDate() === d;
+    const has = entryDates.has(dateStr);
+    const cls = ['cal-day', isToday ? 'today' : '', has ? 'has-entry' : ''].filter(Boolean).join(' ');
+    html += `<div class="${cls}" data-date="${dateStr}">${d}</div>`;
+  }
+
+  calGrid.innerHTML = html;
+  calGrid.querySelectorAll('.cal-day:not(.empty)').forEach(cell => {
+    cell.addEventListener('click', () => {
+      const match = entries.find(e => e.date === cell.dataset.date);
+      if (match) loadEntry(match.id);
+    });
+  });
+}
+
+function loadEntry(id) {
+  if (currentId && currentId !== id) { updateCurrent(); saveEntries(); }
+  currentId = id;
+
+  const entry = getEntry(id);
+  if (!entry) return;
+
+  if (byId('entryTitle'))     byId('entryTitle').value = entry.title || '';
+  if (byId('editorTextarea')) byId('editorTextarea').value = entry.content || '';
+  if (byId('entryDateDisplay')) byId('entryDateDisplay').textContent = formatDate(entry.createdAt);
+
+  setMoodUI(entry.mood);
+  updateStats(entry.content || '');
+  renderTopicChips(entry.topics || [], byId('entryTopics'));
+  renderSubtopicTags(entry.subtopics || [], byId('entrySubtopics'));
+  renderEntriesList();
+  renderCalendar();
+  updateAllTimeStats();
+  updateMoodTimeline();
+  renderSidebarTopicFilters();
+
+  const emptyState = byId('emptyState');
+  if (emptyState) emptyState.classList.add('hidden');
+
+  if (previewMode) renderPreview();
+  savePrefs();
+}
+
+function setMoodUI(moodKey) {
+  const emoji = moodKey ? MOOD_EMOJIS[moodKey] : '🫙';
+  const label = moodKey ? MOOD_LABELS[moodKey] : 'Not set';
+
+  if (byId('currentFeeling'))   byId('currentFeeling').textContent   = emoji;
+  if (byId('entryMoodDisplay')) byId('entryMoodDisplay').textContent = moodKey ? `${emoji} ${label}` : '';
+  if (byId('panelMoodEmoji'))   byId('panelMoodEmoji').textContent   = emoji;
+  if (byId('panelMoodText'))    byId('panelMoodText').textContent    = label;
+
+  document.querySelectorAll('.feel-opt').forEach(b => {
+    b.classList.toggle('selected', b.dataset.feeling === moodKey);
+  });
+  if (byId('feelingLabelDisplay')) byId('feelingLabelDisplay').textContent = label;
+}
+
+function updateStats(content) {
+  const wc = countWords(content);
+  const chars = plainText(content).length;
+  const uniq = getUniqueWords(content).size;
+  const sents = countSentences(content);
+  const rt = readTime(content);
+
+  if (byId('statWords'))    byId('statWords').textContent    = `${wc.toLocaleString()} word${wc !== 1 ? 's' : ''}`;
+  if (byId('statChars'))    byId('statChars').textContent    = `${chars.toLocaleString()} chars`;
+  if (byId('statReadTime')) byId('statReadTime').textContent = `${rt} min read`;
+  if (byId('statUnique'))   byId('statUnique').textContent   = `${uniq} unique`;
+
+  if (byId('pnlWords'))     byId('pnlWords').textContent     = wc.toLocaleString();
+  if (byId('pnlSentences')) byId('pnlSentences').textContent = sents.toLocaleString();
+  if (byId('pnlUnique'))    byId('pnlUnique').textContent    = uniq.toLocaleString();
+  if (byId('pnlReadTime'))  byId('pnlReadTime').textContent  = `${rt}m`;
+
+  // ── Word Goal Milestones (750 -> 1400 -> 2100) ────────────────────────────
+  let targetGoal = 750;
+  let tierLabel  = 'Tier 1 · 750w';
+  let isCongrats = false;
+
+  if (wc < 750) {
+    targetGoal = 750;
+    tierLabel  = 'Tier 1 · 750w';
+  } else if (wc < 1400) {
+    targetGoal = 1400;
+    tierLabel  = 'Tier 2 · 1,400w';
+  } else if (wc < 2100) {
+    targetGoal = 2100;
+    tierLabel  = 'Tier 3 · 2,100w';
+  } else {
+    targetGoal = 2100;
+    tierLabel  = '🎉 2,100w+ Masterpiece';
+    isCongrats = true;
+  }
+
+  const percentVal = Math.min(100, Math.round((wc / targetGoal) * 100));
+  const fillWidth  = `${percentVal}%`;
+
+  const editorGoalFill = byId('editorGoalFill');
+  const panelGoalFill  = byId('panelGoalFill');
+  const goalBadge      = byId('statGoalBadge');
+  const goalTierEl     = byId('goalMilestoneTier');
+  const goalWordsEl    = byId('goalWordsCount');
+  const goalPercentEl  = byId('goalPercent');
+  const goalCongratsEl = byId('goalCongrats');
+
+  if (editorGoalFill) {
+    editorGoalFill.style.width = fillWidth;
+    editorGoalFill.classList.toggle('goal-congrats-glow', isCongrats);
+  }
+  if (panelGoalFill) {
+    panelGoalFill.style.width = fillWidth;
+    panelGoalFill.classList.toggle('goal-congrats-glow', isCongrats);
+  }
+  if (goalBadge) {
+    if (isCongrats) {
+      goalBadge.textContent = `🎉 Congrats! 2,100+ words achieved!`;
+      goalBadge.className = 'stat-goal-badge goal-achieved';
+    } else {
+      goalBadge.textContent = `🎯 ${wc.toLocaleString()} / ${targetGoal.toLocaleString()}w (${percentVal}%)`;
+      goalBadge.className = 'stat-goal-badge';
+    }
+  }
+  if (goalTierEl)    goalTierEl.textContent = tierLabel;
+  if (goalWordsEl)   goalWordsEl.textContent = `${wc.toLocaleString()} / ${targetGoal.toLocaleString()} words`;
+  if (goalPercentEl) goalPercentEl.textContent = isCongrats ? '100% ✨' : `${percentVal}%`;
+  if (goalCongratsEl) {
+    goalCongratsEl.classList.toggle('hidden', !isCongrats);
+  }
+
+  const topWords = getTopWords(content);
+  const wordCloud = byId('wordCloud');
+  if (wordCloud) {
+    if (topWords.length > 0) {
+      const maxFreq = topWords[0][1];
+      wordCloud.innerHTML = topWords.map(([word, freq]) => {
+        const ratio = freq / maxFreq;
+        const cls = ratio > 0.7 ? 'wt-xl' : '';
+        return `<span class="word-tag ${cls}" title="${freq}×">${word}</span>`;
+      }).join('');
+    } else {
+      wordCloud.innerHTML = `<span style="font-size:.78rem;color:var(--text-muted)">Start writing to see top words</span>`;
+    }
+  }
+}
+
+function updateAllTimeStats() {
+  const container = byId('allTimeStats');
+  if (!container) return;
+
+  const totalWords = entries.reduce((s, e) => s + countWords(e.content), 0);
+  const allUnique = new Set();
+  entries.forEach(e => getUniqueWords(e.content).forEach(w => allUnique.add(w)));
+
+  const dates = [...new Set(entries.map(e => e.date))].sort().reverse();
+  let streak = 0, check = isoDate();
+  for (const date of dates) {
+    if (date === check) {
+      streak++;
+      const d = new Date(check); d.setDate(d.getDate() - 1);
+      check = isoDate(d);
+    } else if (date < check) break;
+  }
+
+  container.innerHTML = `
+    <div class="at-row"><span class="at-label">Total entries</span><span class="at-value">${entries.length}</span></div>
+    <div class="at-row"><span class="at-label">Total words</span><span class="at-value">${totalWords.toLocaleString()}</span></div>
+    <div class="at-row"><span class="at-label">Vocabulary</span><span class="at-value">${allUnique.size.toLocaleString()}</span></div>
+    <div class="at-row"><span class="at-label">Writing streak</span><span class="at-value">${streak} day${streak !== 1 ? 's' : ''} 🔥</span></div>
+  `;
+}
+
+function updateMoodTimeline() {
+  const container = byId('moodTimeline');
+  if (!container) return;
+
+  const moodEntries = entries.filter(e => e.mood).slice(0, 10);
+  if (moodEntries.length === 0) {
+    container.innerHTML = `<span style="font-size:.78rem;color:var(--text-muted)">No moods recorded yet</span>`;
+    return;
+  }
+
+  container.innerHTML = moodEntries.map(e => `
+    <div class="timeline-item" data-id="${e.id}">
+      <span>${MOOD_EMOJIS[e.mood]}</span>
+      <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:110px">${e.title || 'Untitled'}</span>
+      <span style="margin-left:auto;opacity:.5">${formatShortDate(e.createdAt)}</span>
+    </div>
+  `).join('');
+
+  container.querySelectorAll('.timeline-item').forEach(item => {
+    item.addEventListener('click', () => loadEntry(item.dataset.id));
+  });
+}
+
+function renderPreview() {
+  const pane = byId('previewPane');
+  const ta   = byId('editorTextarea');
+  if (pane && ta) pane.innerHTML = renderMarkdown(ta.value);
+}
+
+function togglePreview() {
+  previewMode = !previewMode;
+  const ta   = byId('editorTextarea');
+  const pane = byId('previewPane');
+  const btn  = byId('previewToggle');
+
+  if (previewMode) {
+    renderPreview();
+    if (ta)   ta.classList.add('hidden');
+    if (pane) pane.classList.remove('hidden');
+    if (btn)  { btn.classList.add('preview-active'); btn.textContent = '✏ Edit'; }
+  } else {
+    if (ta)   ta.classList.remove('hidden');
+    if (pane) pane.classList.add('hidden');
+    if (btn)  { btn.classList.remove('preview-active'); btn.textContent = '👁 Preview'; }
+    if (ta)   ta.focus();
+  }
+}
+
+function applyMarkdown(cmd) {
+  const ta = byId('editorTextarea');
+  if (!ta) return;
+
+  const s = ta.selectionStart, e = ta.selectionEnd;
+  const sel = ta.value.slice(s, e);
+  let prefix = '', suffix = '', newLine = false;
+
+  switch(cmd) {
+    case 'bold':   prefix = '**'; suffix = '**'; break;
+    case 'italic': prefix = '_';  suffix = '_';  break;
+    case 'h1':     prefix = '# '; newLine = true; break;
+    case 'h2':     prefix = '## '; newLine = true; break;
+    case 'h3':     prefix = '### '; newLine = true; break;
+    case 'ul':     prefix = '- '; newLine = true; break;
+    case 'ol':     prefix = '1. '; newLine = true; break;
+    case 'quote':  prefix = '> '; newLine = true; break;
+    case 'code':   prefix = '`'; suffix = '`'; break;
+    case 'hr':     prefix = '\n---\n'; newLine = true; break;
+  }
+
+  const inserted = newLine ? prefix + (sel || 'text') : prefix + (sel || 'text') + suffix;
+  ta.setRangeText(inserted, s, e, 'select');
+  ta.focus();
+  onEditorInput();
+}
+
+function exportMarkdown() {
+  const entry = getEntry(currentId);
+  if (!entry) return;
+
+  updateCurrent(); saveEntries();
+  const wc = countWords(entry.content);
+  const uniq = getUniqueWords(entry.content).size;
+  const topicsLine = (entry.topics || []).map(t => `${t.topic}-${t.tone}`).join(', ') || 'none';
+  const subtopicLine = (entry.subtopics || []).join(', ') || 'none';
+
+  const fileText = `---
+title: "${entry.title || 'Untitled'}"
+date: ${entry.createdAt}
+mood: ${entry.mood || 'none'}
+topics: ${topicsLine}
+subtopics: ${subtopicLine}
+words: ${wc}
+unique_words: ${uniq}
+---
+
+# ${entry.title || 'Untitled'}
+
+*${formatDate(entry.createdAt)}*${entry.mood ? `  \n**Mood:** ${MOOD_EMOJIS[entry.mood]} ${MOOD_LABELS[entry.mood]}` : ''}
+
+---
+
+${entry.content}
+
+---
+*Exported from Folio · ${wc} words*
+`;
+
+  const blob = new Blob([fileText], { type: 'text/markdown;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = `${(entry.title || 'entry').replace(/[^a-z0-9]/gi, '_').toLowerCase()}_${entry.date}.md`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function setFont(key, save = true) {
+  currentFont = key;
+  const ta = byId('editorTextarea');
+  if (ta) {
+    ta.classList.remove('font-inter', 'font-mono');
+    if (key === 'inter') ta.classList.add('font-inter');
+    if (key === 'mono')  ta.classList.add('font-mono');
+  }
+  document.querySelectorAll('.btn-pill[data-font]').forEach(b => {
+    b.classList.toggle('active', b.dataset.font === key);
+  });
+  if (save) savePrefs();
+}
+
+function onEditorInput() {
+  const ta = byId('editorTextarea');
+  if (!ta) return;
+
+  const content = ta.value;
+  updateStats(content);
+  if (previewMode) renderPreview();
+
+  const ind = byId('saveIndicator');
+  if (ind) { ind.className = 'status-saved saving'; ind.textContent = '● Saving...'; }
+
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    updateCurrent(); saveEntries(); renderEntriesList();
+    if (ind) { ind.className = 'status-saved saved'; ind.textContent = '✓ Saved'; setTimeout(() => { ind.textContent = 'Saved'; }, 1500); }
+  }, 500);
+}
+
+function toggleSidebar() {
+  byId('appShell')?.classList.toggle('sidebar-hidden');
+}
+
+function onNewEntry() {
+  if (currentId) { updateCurrent(); saveEntries(); }
+  if (previewMode) togglePreview(); // exit preview mode
+
+  const entry = createEntry();
+  loadEntry(entry.id);
+  byId('entryTitle')?.focus();
+}
+
+function onDeleteConfirm() {
+  if (!currentId) return;
+  deleteEntry(currentId);
+  currentId = null;
+  if (entries.length > 0) loadEntry(entries[0].id);
+  else {
+    if (byId('entryTitle'))     byId('entryTitle').value = '';
+    if (byId('editorTextarea')) byId('editorTextarea').value = '';
+    byId('emptyState')?.classList.remove('hidden');
+    renderEntriesList(); renderCalendar(); updateAllTimeStats(); updateMoodTimeline();
+  }
+  byId('deleteModal')?.classList.add('hidden');
+}
+
+// ─── INIT APPLICATION ─────────────────────────────────────────────────────────
+function init() {
+  loadEntries();
+  loadPrefs();
+  loadAiConfig();
+
+  // Create Welcome entry if empty
+  if (entries.length === 0) {
+    const welcome = createEntry();
+    welcome.title = 'Welcome to Folio 📖';
+    welcome.content = `# Welcome to Folio
+
+*A beautiful place for your thoughts.*
+
+---
+
+Folio is your personal, private journaling space. Everything saves automatically to your browser's local storage, and you can export any entry as a **.md** (Markdown) file anytime.
+
+## Features
+
+- **Write freely** — clean typography, Markdown support
+- **Set a mood** — track feelings for every entry
+- **Analyze topics** — click ✨ Analyze to auto-detect themes & granular subtopics (#girlfriend-problems, #building-ai-app)
+- **Connect AI** — easily connect Gemini, OpenAI, or Ollama in AI Settings ⚙
+- **Export** — download entries as clean Markdown files
+
+---
+*Happy journaling!* ✨`;
+    welcome.mood = 'inspired';
+    welcome.topics = [{ topic: 'creativity', tone: 'inspired' }, { topic: 'growth', tone: 'hopeful' }];
+    welcome.subtopics = ['welcome-to-folio', 'getting-started'];
+    saveEntries();
+    currentId = welcome.id;
+  }
+
+  const startEntry = (currentId ? getEntry(currentId) : null) || entries[0];
+  if (startEntry) loadEntry(startEntry.id);
+  else byId('emptyState')?.classList.remove('hidden');
+
+  renderCalendar();
+  updateAllTimeStats();
+  updateMoodTimeline();
+  renderSidebarTopicFilters();
+
+  // Bind Button Handlers cleanly
+  byId('newEntryBtn')?.addEventListener('click', onNewEntry);
+  byId('emptyNewBtn')?.addEventListener('click', onNewEntry);
+  byId('sidebarToggle')?.addEventListener('click', toggleSidebar);
+
+  byId('searchInput')?.addEventListener('input', e => {
+    searchQuery = e.target.value;
+    renderEntriesList();
+  });
+
+  byId('calPrev')?.addEventListener('click', () => { calViewDate.setMonth(calViewDate.getMonth() - 1); renderCalendar(); });
+  byId('calNext')?.addEventListener('click', () => { calViewDate.setMonth(calViewDate.getMonth() + 1); renderCalendar(); });
+
+  byId('editorTextarea')?.addEventListener('input', onEditorInput);
+  byId('entryTitle')?.addEventListener('input', () => {
+    const ind = byId('saveIndicator');
+    if (ind) { ind.className = 'status-saved saving'; ind.textContent = '● Saving...'; }
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      updateCurrent(); saveEntries(); renderEntriesList();
+      if (ind) { ind.className = 'status-saved saved'; ind.textContent = '✓ Saved'; setTimeout(() => { ind.textContent = 'Saved'; }, 1500); }
+    }, 500);
+  });
+
+  document.querySelectorAll('.md-tool[data-cmd]').forEach(btn => {
+    btn.addEventListener('click', () => applyMarkdown(btn.dataset.cmd));
+  });
+
+  byId('previewToggle')?.addEventListener('click', togglePreview);
+
+  // Mood picker
+  const feelingBtn = byId('feelingBtn');
+  const feelingPicker = byId('feelingPicker');
+  feelingBtn?.addEventListener('click', e => {
+    e.stopPropagation();
+    feelingPicker?.classList.toggle('hidden');
+  });
+
+  document.querySelectorAll('.feel-opt').forEach(btn => {
+    btn.addEventListener('mouseenter', () => {
+      const lbl = byId('feelingLabelDisplay');
+      if (lbl) lbl.textContent = btn.title;
+    });
+    btn.addEventListener('mouseleave', () => {
+      const entry = getEntry(currentId);
+      const lbl = byId('feelingLabelDisplay');
+      if (lbl) lbl.textContent = entry?.mood ? MOOD_LABELS[entry.mood] : 'Select a mood';
+    });
+    btn.addEventListener('click', () => {
+      const moodKey = btn.dataset.feeling;
+      const entry = getEntry(currentId);
+      if (entry) { entry.mood = moodKey; saveEntries(); }
+      setMoodUI(moodKey);
+      updateMoodTimeline();
+      renderEntriesList();
+      feelingPicker?.classList.add('hidden');
+    });
+  });
+
+  document.addEventListener('click', e => {
+    const wrap = byId('feelingWrap');
+    if (wrap && !wrap.contains(e.target)) feelingPicker?.classList.add('hidden');
+  });
+
+  // Fonts
+  document.querySelectorAll('.btn-pill[data-font]').forEach(btn => {
+    btn.addEventListener('click', () => setFont(btn.dataset.font));
+  });
+
+  // Export / Delete
+  byId('exportBtn')?.addEventListener('click', exportMarkdown);
+  byId('deleteBtn')?.addEventListener('click', () => { if (currentId) byId('deleteModal')?.classList.remove('hidden'); });
+  byId('cancelDelete')?.addEventListener('click', () => byId('deleteModal')?.classList.add('hidden'));
+  byId('confirmDelete')?.addEventListener('click', onDeleteConfirm);
+  byId('deleteModal')?.addEventListener('click', e => { if (e.target === byId('deleteModal')) byId('deleteModal')?.classList.add('hidden'); });
+
+  // AI Buttons & Modals
+  byId('aiAnalyzeBtn')?.addEventListener('click', () => triggerAnalysis(true));
+  byId('aiSettingsBtn')?.addEventListener('click', openAiSettings);
+  byId('closeAiSettings')?.addEventListener('click', () => byId('aiSettingsModal')?.classList.add('hidden'));
+  byId('aiSettingsModal')?.addEventListener('click', e => { if (e.target === byId('aiSettingsModal')) byId('aiSettingsModal')?.classList.add('hidden'); });
+
+  // AI Settings Tabs
+  document.querySelectorAll('.ai-tab').forEach(tab => {
+    tab.addEventListener('click', () => switchAiTab(tab.dataset.provider));
+  });
+
+  byId('testAiBtn')?.addEventListener('click', testAiConnection);
+  byId('saveAiSettings')?.addEventListener('click', saveAiSettingsHandler);
+
+    byId('geminiModelHint')?.addEventListener('click', async () => {
+    const key = byId('geminiKey')?.value.trim() || aiConfig.geminiKey;
+    if (!key) { alert('Please enter your Gemini API key first'); return; }
+    const hint = byId('geminiModelHint');
+    if (hint) hint.textContent = '⏳ Fetching models...';
+    const models = await fetchGeminiModels(key);
+    if (models && models.length > 0) {
+      updateGeminiModelDropdown(models, byId('geminiModel')?.value);
+      if (hint) hint.textContent = `✓ Found ${models.length} models`;
+      setTimeout(() => { if (hint) hint.textContent = '⚡ Auto-detect models'; }, 3000);
+    } else {
+      if (hint) hint.textContent = '✗ Could not fetch models';
+      setTimeout(() => { if (hint) hint.textContent = '⚡ Auto-detect models'; }, 3000);
+    }
+  });
+
+  byId('ollamaModelSelect')?.addEventListener('change', e => {
+    const customInput = byId('ollamaModel');
+    if (e.target.value === 'custom') {
+      customInput?.classList.remove('hidden');
+      customInput?.focus();
+    } else {
+      customInput?.classList.add('hidden');
+    }
+  });
+
+  byId('ollamaModelHint')?.addEventListener('click', async () => {
+    const url = byId('ollamaUrl')?.value.trim() || aiConfig.ollamaUrl || 'http://localhost:11434';
+    const hint = byId('ollamaModelHint');
+    if (hint) hint.textContent = '⏳ Checking Ollama...';
+    try {
+      const models = await fetchOllamaModels(url);
+      if (models && models.length > 0) {
+        updateOllamaModelDropdown(models, byId('ollamaModelSelect')?.value);
+        if (hint) hint.textContent = `✓ Found ${models.length} models`;
+        setTimeout(() => { if (hint) hint.textContent = '⚡ Auto-detect local models'; }, 3000);
+      } else {
+        if (hint) hint.textContent = '✗ No models found (pull with: ollama pull llama3)';
+        setTimeout(() => { if (hint) hint.textContent = '⚡ Auto-detect local models'; }, 4000);
+      }
+    } catch(err) {
+      alert(`Could not fetch Ollama models:\n\n${err.message}\n\nMake sure Ollama is running and allows browser requests:\nRun in Terminal: OLLAMA_ORIGINS="*" ollama serve`);
+      if (hint) hint.textContent = '⚡ Auto-detect local models';
+    }
+  });
+
+  // Topics Overview Modal
+  byId('topicsOverviewBtn')?.addEventListener('click', openTopicsOverview);
+  byId('closeTopicsModal')?.addEventListener('click', () => byId('topicsModal')?.classList.add('hidden'));
+  byId('topicsModal')?.addEventListener('click', e => { if (e.target === byId('topicsModal')) byId('topicsModal')?.classList.add('hidden'); });
+
+  // Clear Topic Filter
+  byId('clearTopicFilter')?.addEventListener('click', () => {
+    activeTopicFilter = null;
+    byId('clearTopicFilter')?.classList.add('hidden');
+    renderSidebarTopicFilters();
+    renderEntriesList();
+  });
+
+  // Keyboard Shortcuts
+  document.addEventListener('keydown', e => {
+    const mod = e.ctrlKey || e.metaKey;
+    if (mod && e.key === 'n') { e.preventDefault(); onNewEntry(); }
+    if (mod && e.key === 'b') { e.preventDefault(); applyMarkdown('bold'); }
+    if (mod && e.key === 'i') { e.preventDefault(); applyMarkdown('italic'); }
+    if (mod && e.key === 'p') { e.preventDefault(); togglePreview(); }
+    if (mod && e.key === 'e') { e.preventDefault(); exportMarkdown(); }
+    if (mod && e.shiftKey && e.key === 'A') { e.preventDefault(); triggerAnalysis(); }
+    if (e.key === 'Escape') {
+      feelingPicker?.classList.add('hidden');
+      byId('deleteModal')?.classList.add('hidden');
+      byId('topicsModal')?.classList.add('hidden');
+      byId('aiSettingsModal')?.classList.add('hidden');
+    }
+  });
+
+  updateAiBtnLabel();
+}
+
+// ─── BOOTSTRAP ────────────────────────────────────────────────────────────────
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
