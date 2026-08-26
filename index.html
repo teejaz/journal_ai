@@ -199,16 +199,22 @@
           <option value="topics">🏷️ Compound Topics &amp; Hashtags</option>
           <option value="custom">💬 Custom Question / Prompt</option>
         </select>
+        <button class="btn-tool" id="togglePromptEditorBtn" title="View or edit prompt before generating">
+          <span>✏️ Edit Prompt</span>
+        </button>
         <button class="btn-ai" id="runLensBtn" style="padding:7px 16px;white-space:nowrap" title="Run analysis for selected lens">
           <span class="ai-btn-icon">&#10024;</span>
           <span>Generate</span>
         </button>
       </div>
 
-      <!-- Custom Prompt Box (shown when Custom lens is selected) -->
-      <div class="analysis-custom-box hidden" id="analysisCustomBox">
-        <input type="text" id="analysisCustomInput" class="ai-input" placeholder="Ask anything about this entry (e.g. 'What lessons can I apply tomorrow?')..." />
-        <button class="btn-ai" id="runCustomPromptBtn" style="padding:7px 14px">Ask AI</button>
+      <!-- Editable Prompt Box (Can be edited before generating) -->
+      <div class="analysis-prompt-box hidden" id="analysisPromptBox">
+        <div class="analysis-prompt-header">
+          <span class="analysis-prompt-label">Prompt for <strong id="promptLensName">Selected Lens</strong>:</span>
+          <span class="ai-hint" id="resetLensPromptBtn" style="font-size:0.68rem;color:var(--accent);cursor:pointer">↺ Reset to Default Prompt</span>
+        </div>
+        <textarea id="analysisPromptTextarea" class="ai-input analysis-prompt-textarea" rows="4" placeholder="Edit the prompt instructions before sending to AI..."></textarea>
       </div>
 
       <!-- Analysis Results Card -->

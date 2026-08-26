@@ -1049,14 +1049,42 @@ body {
   background: rgba(255, 255, 255, 0.08);
 }
 
-.analysis-custom-box {
+.analysis-prompt-box {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 20px;
-  background: rgba(18, 22, 38, 0.7);
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 20px 14px;
+  background: rgba(18, 22, 38, 0.85);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  animation: fadeIn 0.15s var(--ease);
+}
+
+.analysis-prompt-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.analysis-prompt-label {
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+}
+.analysis-prompt-label strong {
+  color: var(--accent);
+}
+
+.analysis-prompt-textarea {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 8px 12px;
+  resize: vertical;
+}
+.analysis-prompt-textarea:focus {
+  border-color: rgba(245, 182, 69, 0.5);
 }
 
 /* ─── GITHUB PR-STYLE REVIEW DIFF CARDS ───────────────────────────── */

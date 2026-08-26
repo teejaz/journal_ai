@@ -1451,10 +1451,7 @@ function openAnalysisView(lens = 'todos') {
   const select = byId('analysisLensSelect');
   if (select) select.value = activeLens;
 
-  const customBox = byId('analysisCustomBox');
-  if (customBox) {
-    customBox.classList.toggle('hidden', activeLens !== 'custom');
-  }
+  syncLensPromptEditor(activeLens);
 
   // Check if we already have saved analysis for this lens on this entry
   const saved = entry.analysis && entry.analysis[activeLens];
@@ -2774,21 +2771,46 @@ Folio is your personal, private journaling space. Everything saves automatically
     renderEntriesList();
   });
 
+function syncLensPromptEditor(lens) {
+  const lensObj = ANALYSIS_LENSES[lens] || ANALYSIS_LENSES.todos;
+  const nameEl = byId('promptLensName');
+  if (nameEl) nameEl.textContent = lensObj.name || 'Selected Lens';
+
+  const ta = byId('analysisPromptTextarea');
+  if (ta) ta.value = lensObj.prompt || '';
+}
+
   // AI Analysis Hub Event Listeners
   byId('backToWritingBtn')?.addEventListener('click', closeAnalysisView);
   byId('appendAnalysisBtn')?.addEventListener('click', appendAnalysisToEntry);
   byId('copyAnalysisBtn')?.addEventListener('click', copyAnalysisToClipboard);
   byId('rerunAnalysisBtn')?.addEventListener('click', () => {
-    const customPrompt = activeLens === 'custom' ? byId('analysisCustomInput')?.value.trim() : '';
+    const customPrompt = byId('analysisPromptTextarea')?.value.trim() || ANALYSIS_LENSES[activeLens]?.prompt;
     runLensAnalysis(activeLens, customPrompt);
+  });
+
+  // Prompt Editor Toggle & Reset
+  byId('togglePromptEditorBtn')?.addEventListener('click', () => {
+    const box = byId('analysisPromptBox');
+    if (box) {
+      box.classList.toggle('hidden');
+      if (!box.classList.contains('hidden')) {
+        byId('analysisPromptTextarea')?.focus();
+      }
+    }
+  });
+
+  byId('resetLensPromptBtn')?.addEventListener('click', () => {
+    const lensObj = ANALYSIS_LENSES[activeLens] || ANALYSIS_LENSES.todos;
+    const ta = byId('analysisPromptTextarea');
+    if (ta) ta.value = lensObj.prompt || '';
   });
 
   // Dropdown Lens Selector
   byId('analysisLensSelect')?.addEventListener('change', e => {
     const lens = e.target.value;
     activeLens = lens;
-    const customBox = byId('analysisCustomBox');
-    if (customBox) customBox.classList.toggle('hidden', lens !== 'custom');
+    syncLensPromptEditor(lens);
 
     const entry = getEntry(currentId);
     const saved = entry?.analysis && entry.analysis[lens];
@@ -2820,7 +2842,7 @@ Folio is your personal, private journaling space. Everything saves automatically
 
   byId('runLensBtn')?.addEventListener('click', () => {
     const lens = byId('analysisLensSelect')?.value || activeLens || 'todos';
-    const customPrompt = lens === 'custom' ? byId('analysisCustomInput')?.value.trim() : '';
+    const customPrompt = byId('analysisPromptTextarea')?.value.trim() || ANALYSIS_LENSES[lens]?.prompt;
     runLensAnalysis(lens, customPrompt);
   });
 
