@@ -2570,11 +2570,31 @@ function renderCalendar() {
 }
 
 function loadEntry(id) {
-  if (currentId && currentId !== id) { updateCurrent(); saveEntries(); }
+  if (editingDocType === 'pillar') {
+    updateCurrent(); // cleanly save pillar changes
+    editingDocType = 'entry';
+  } else if (currentId && currentId !== id) {
+    updateCurrent();
+    saveEntries();
+  }
+  editingDocType = 'entry';
   currentId = id;
 
   const entry = getEntry(id);
   if (!entry) return;
+
+  // Ensure analysis view is closed and editor container is visible
+  const analysisView = byId('analysisView');
+  const editorContainer = byId('editorContainer');
+  const entryMeta = byId('entryMeta');
+  const mdToolbar = byId('mdToolbar');
+  const goalTrack = byId('editorGoalTrack');
+
+  if (analysisView) analysisView.classList.add('hidden');
+  if (editorContainer) editorContainer.classList.remove('hidden');
+  if (entryMeta) entryMeta.classList.remove('hidden');
+  if (mdToolbar) mdToolbar.classList.remove('hidden');
+  if (goalTrack) goalTrack.classList.remove('hidden');
 
   // Sync calendar view month to entry's month if needed
   const eDate = getEntryDate(entry);
@@ -3180,10 +3200,18 @@ Folio is your personal, private journaling space. Everything saves automatically
 
   // Sidebar View Switcher Tabs (Journal Entries vs AI Analyses)
   byId('tabViewEntries')?.addEventListener('click', () => {
+    if (editingDocType === 'pillar') {
+      updateCurrent(); // cleanly save pillar changes
+      editingDocType = 'entry';
+    }
     sidebarView = 'entries';
     byId('tabViewEntries')?.classList.add('active');
     byId('tabViewAnalysis')?.classList.remove('active');
     closeAnalysisView();
+    const entry = getEntry(currentId) || entries[0];
+    if (entry) {
+      loadEntry(entry.id);
+    }
     renderEntriesList();
   });
 
