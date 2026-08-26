@@ -1346,7 +1346,7 @@ body {
   overflow: hidden;
 }
 
-.modal-pillars-card .modal-header {
+.modal-pillars-card .topics-modal-header {
   padding: 16px 22px;
   border-bottom: 1px solid var(--border);
   background: rgba(18, 22, 38, 0.7);
