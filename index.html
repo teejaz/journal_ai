@@ -70,6 +70,11 @@
       <input type="text" id="entryTitle" class="entry-title-input" placeholder="Entry title..." />
 
       <div class="topbar-actions">
+        <!-- Life Pillars Knowledge Hub -->
+        <button class="btn-icon" id="lifePillarsBtn" title="Living Life Pillars & Compendium (Career, Gym, Dreams, Relationships)">
+          <span style="font-size:1rem">&#128218;</span>
+        </button>
+
         <!-- AI Analyze -->
         <button class="btn-ai" id="aiAnalyzeBtn" title="Analyze Topics (Ctrl+Shift+A)">
           <span class="ai-btn-icon">&#10024;</span>
@@ -180,16 +185,24 @@
         </div>
       </div>
 
-      <!-- Lens Selection Pills -->
-      <div class="analysis-lens-bar" id="analysisLensBar">
-        <button class="lens-pill active" data-lens="todos">📋 To-Dos &amp; Actions</button>
-        <button class="lens-pill" data-lens="principles">🧭 Core Principles</button>
-        <button class="lens-pill" data-lens="motivation">🔥 Motivational Coach</button>
-        <button class="lens-pill" data-lens="mits">🎯 Top Priorities</button>
-        <button class="lens-pill" data-lens="summary">📑 Section Summary</button>
-        <button class="lens-pill" data-lens="mood">🌡️ Mood Deep-Dive</button>
-        <button class="lens-pill" data-lens="topics">🏷️ Topics &amp; Tags</button>
-        <button class="lens-pill" data-lens="custom">💬 Custom Prompt</button>
+      <!-- Lens Selection Dropdown Bar -->
+      <div class="analysis-lens-controls">
+        <label class="analysis-select-label" for="analysisLensSelect">Reflection Lens:</label>
+        <select id="analysisLensSelect" class="ai-input analysis-dropdown">
+          <option value="todos">📋 Action Items &amp; To-Dos</option>
+          <option value="pillarSuggestions">🌟 Extract Life Pillar Suggestions (GitHub PR Review)</option>
+          <option value="principles">🧭 Core Principles &amp; Self-Standards</option>
+          <option value="motivation">🔥 Motivational Coach Boost</option>
+          <option value="mits">🎯 Top Priorities (MITs)</option>
+          <option value="summary">📑 Section-by-Section Summary</option>
+          <option value="mood">🌡️ Mood &amp; Emotional Deep-Dive</option>
+          <option value="topics">🏷️ Compound Topics &amp; Hashtags</option>
+          <option value="custom">💬 Custom Question / Prompt</option>
+        </select>
+        <button class="btn-ai" id="runLensBtn" style="padding:7px 16px;white-space:nowrap" title="Run analysis for selected lens">
+          <span class="ai-btn-icon">&#10024;</span>
+          <span>Generate</span>
+        </button>
       </div>
 
       <!-- Custom Prompt Box (shown when Custom lens is selected) -->
@@ -485,6 +498,57 @@
     <div class="modal-actions" style="margin-top:18px">
       <button class="btn-secondary" id="testAiBtn">Test Connection</button>
       <button class="btn-primary" id="saveAiSettings" style="font-size:.85rem;padding:9px 22px">Save &amp; Apply</button>
+    </div>
+  </div>
+</div>
+
+<!-- LIFE PILLARS KNOWLEDGE HUB MODAL -->
+<div class="modal hidden" id="pillarsModal">
+  <div class="modal-card modal-pillars-card">
+    <div class="modal-header">
+      <div class="modal-title-group">
+        <div class="modal-title">&#128218; Living Life Pillars &amp; Compendium</div>
+        <div class="modal-subtitle">Profound realizations, working solutions, and personal systems distilled across your daily entries</div>
+      </div>
+      <button class="modal-close" id="closePillarsModal">&times;</button>
+    </div>
+    
+    <div class="pillars-layout">
+      <!-- Left Pillar Navigation -->
+      <div class="pillars-nav-col">
+        <div class="pillars-nav" id="pillarsNav"></div>
+        <button class="btn-new-pillar" id="newPillarBtn">+ New Life Pillar</button>
+      </div>
+      
+      <!-- Right Pillar Viewer / Editor -->
+      <div class="pillar-detail-view" id="pillarDetailView">
+        <div class="pillar-detail-header">
+          <div class="pillar-title-area">
+            <span class="pillar-icon" id="activePillarIcon">&#128188;</span>
+            <div>
+              <h2 class="pillar-name" id="activePillarName">Career &amp; Job Search</h2>
+              <span class="pillar-meta" id="activePillarMeta">0 realizations · 0 solutions</span>
+            </div>
+          </div>
+          <div class="pillar-header-actions">
+            <button class="btn-tool" id="editPillarToggleBtn">✏️ Edit Manual</button>
+            <button class="btn-tool" id="exportPillarBtn" title="Export this pillar as markdown (.md)">Export</button>
+            <button class="btn-tool btn-danger hidden" id="deletePillarBtn" title="Delete custom pillar">Delete</button>
+          </div>
+        </div>
+
+        <!-- Rendered Realizations & Solutions Compendium View -->
+        <div class="pillar-content-rendered" id="pillarContentRendered"></div>
+
+        <!-- Raw Markdown Editor (toggled with Edit Manual) -->
+        <div class="pillar-content-editor hidden" id="pillarContentEditor">
+          <textarea id="pillarMarkdownTextarea" class="pillar-textarea" placeholder="Write your core principles, realizations, and strategies for this pillar..."></textarea>
+          <div class="pillar-editor-footer">
+            <button class="btn-primary" id="savePillarManualBtn" style="padding:7px 18px">Save Changes</button>
+            <button class="btn-secondary" id="cancelPillarEditBtn" style="padding:7px 14px">Cancel</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </div>

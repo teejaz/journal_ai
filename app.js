@@ -736,6 +736,36 @@ const ANALYSIS_LENSES = {
     title: 'Action Items & Next Steps',
     prompt: `Analyze this journal entry and extract all action items, commitments, to-dos, and follow-ups. Format as a clean markdown checklist (- [ ] Task name). Group them under '### Immediate Priorities' and '### Upcoming / Next Steps'. If no explicit tasks were mentioned, recommend 2-3 logical next steps based on the thoughts written.`
   },
+  pillarSuggestions: {
+    name: 'Life Pillar Suggestions (PR Review)',
+    icon: '🌟',
+    title: 'Living Life Pillar Suggestions & Pull Request Review',
+    isPR: true,
+    prompt: `You are an executive life systems compiler. Analyze this journal entry against the author's primary life pillars:
+- Career & Job Search (interview prep, system design, skills, resume, networking)
+- Gym & Fitness Consistency (workouts, progressive overload, nutrition, meal prep, sleep, recovery)
+- Dreams & Big Ambitions (building SaaS/AI apps, creative pursuits, financial independence)
+- Meaningful Relationships (family, friendships, partner, boundaries, empathy)
+- General Life Principles (mindset, discipline, personal standards)
+
+Extract 1 to 5 concrete suggestions to merge into these living pillars. Each suggestion MUST be either:
+1) A "realization" (a profound personal insight, mindset shift, or core truth realized).
+2) A "solution" (an actionable method, habit, system, or strategy that worked).
+
+Respond ONLY with valid JSON with this exact structure:
+{
+  "suggestions": [
+    {
+      "pillarId": "career",
+      "pillarName": "Career & Job Search",
+      "type": "solution",
+      "title": "Short title",
+      "text": "Specific, actionable principle or working strategy to merge.",
+      "quote": "Context or snippet from the entry that inspired this."
+    }
+  ]
+}`
+  },
   principles: {
     name: 'Core Principles',
     icon: '🧭',
@@ -1262,6 +1292,96 @@ function renderSidebarTopicFilters() {
   });
 }
 
+// ─── LIVING LIFE PILLARS KNOWLEDGE STORE ─────────────────────────────────────
+const PILLARS_KEY = 'journal_ai_pillars_v1';
+const DEFAULT_PILLARS = [
+  {
+    id: 'career',
+    name: 'Career & Job Search',
+    icon: '💼',
+    isDefault: true,
+    realizations: [
+      { id: 'c1', text: 'Preparation beats anxiety: Practicing system design mock interviews weekly dramatically increases confidence.', date: '2026-08-20', quote: 'Felt way more prepared after the mock interview.' }
+    ],
+    solutions: [
+      { id: 'cs1', text: 'Set a dedicated 90-minute morning deep work block specifically for portfolio projects and outreach.', date: '2026-08-22', quote: 'Morning deep work was uninterrupted.' }
+    ],
+    manualNotes: '### Core Career Principles\n- Focus on high-leverage skills (distributed systems, agentic architectures).\n- Treat interview preparation as an active daily workout.'
+  },
+  {
+    id: 'gym',
+    name: 'Gym & Fitness Consistency',
+    icon: '🏋️',
+    isDefault: true,
+    realizations: [
+      { id: 'g1', text: 'Consistency outperforms intensity: Showing up 4 times a week steadily compounds far more than burning out.', date: '2026-08-21', quote: 'Felt energized without pushing into injury.' }
+    ],
+    solutions: [
+      { id: 'gs1', text: 'Pack gym bag and lay out workout clothes the night before to eliminate morning friction.', date: '2026-08-23', quote: 'Zero morning friction when bag was ready.' }
+    ],
+    manualNotes: '### Fitness Systems & Rules\n- 4 gym sessions weekly: Push, Pull, Legs, Upper.\n- 8 hours of sleep is non-negotiable for recovery.'
+  },
+  {
+    id: 'dreams',
+    name: 'Dreams & Big Ambitions',
+    icon: '🚀',
+    isDefault: true,
+    realizations: [
+      { id: 'd1', text: 'Building in public creates momentum and accountability that private ideation cannot match.', date: '2026-08-22', quote: 'Sharing updates kept me motivated.' }
+    ],
+    solutions: [
+      { id: 'ds1', text: 'Ship a small working MVP before optimizing or adding complex secondary features.', date: '2026-08-24', quote: 'Focusing on the core feature shipped the app in 2 days.' }
+    ],
+    manualNotes: '### Ambition Roadmap\n- Build high-utility AI tools that empower daily mindful living.\n- Prioritize craftsmanship, privacy-first design, and speed.'
+  },
+  {
+    id: 'relationships',
+    name: 'Meaningful Relationships',
+    icon: '🤝',
+    isDefault: true,
+    realizations: [
+      { id: 'r1', text: 'Active listening without giving unsolicited advice builds the deepest mutual trust.', date: '2026-08-19', quote: 'She appreciated me just listening.' }
+    ],
+    solutions: [
+      { id: 'rs1', text: 'Schedule a recurring weekly call with close friends and family to stay connected.', date: '2026-08-21', quote: 'Great Sunday catch-up call.' }
+    ],
+    manualNotes: '### Relationship Standards\n- Be fully present: No phones during dinner or quality conversations.\n- Express gratitude and appreciation openly and often.'
+  }
+];
+
+let lifePillars = [];
+let activePillarId = 'career';
+let currentPRSuggestions = [];
+
+function loadLifePillars() {
+  try {
+    const raw = localStorage.getItem(PILLARS_KEY);
+    if (raw) {
+      lifePillars = JSON.parse(raw);
+    } else {
+      lifePillars = DEFAULT_PILLARS;
+      saveLifePillars();
+    }
+  } catch(e) {
+    lifePillars = DEFAULT_PILLARS;
+  }
+}
+
+function saveLifePillars() {
+  try {
+    localStorage.setItem(PILLARS_KEY, JSON.stringify(lifePillars));
+  } catch(e) {}
+}
+
+function escapeHtml(str) {
+  return (str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 let activeLens = 'todos';
 let activeAnalysisMarkdown = '';
 
@@ -1300,10 +1420,9 @@ function openAnalysisView(lens = 'todos') {
     providerBadge.textContent = `${pNames[aiConfig.provider] || 'AI'} ${pModel ? `(${pModel})` : ''}`;
   }
 
-  // Update lens pill active states
-  document.querySelectorAll('.lens-pill').forEach(pill => {
-    pill.classList.toggle('active', pill.dataset.lens === activeLens);
-  });
+  // Update lens dropdown value
+  const select = byId('analysisLensSelect');
+  if (select) select.value = activeLens;
 
   const customBox = byId('analysisCustomBox');
   if (customBox) {
@@ -1313,10 +1432,29 @@ function openAnalysisView(lens = 'todos') {
   // Check if we already have saved analysis for this lens on this entry
   const saved = entry.analysis && entry.analysis[activeLens];
   if (saved) {
-    activeAnalysisMarkdown = saved;
-    renderAnalysisOutput(saved);
+    activeAnalysisMarkdown = typeof saved === 'string' ? saved : JSON.stringify(saved);
+    if (activeLens === 'pillarSuggestions') {
+      try {
+        const data = typeof saved === 'string' ? JSON.parse(saved) : saved;
+        renderPRReviewCards(data);
+      } catch(e) {
+        renderAnalysisOutput(typeof saved === 'string' ? saved : '');
+      }
+    } else {
+      renderAnalysisOutput(activeAnalysisMarkdown);
+    }
   } else {
-    runLensAnalysis(activeLens);
+    // Show prompt ready to run
+    const card = byId('analysisOutputCard');
+    if (card) {
+      card.innerHTML = `
+        <div class="analysis-placeholder">
+          <div style="font-size:1.8rem;margin-bottom:8px">${ANALYSIS_LENSES[activeLens]?.icon || '✨'}</div>
+          <div style="font-weight:600;color:var(--text-primary);margin-bottom:4px">${ANALYSIS_LENSES[activeLens]?.title || 'Ready for Analysis'}</div>
+          <div>Click <strong>"Generate"</strong> above to extract insights for this entry.</div>
+        </div>
+      `;
+    }
   }
 }
 
@@ -1355,8 +1493,29 @@ async function runLensAnalysis(lensKey, customPromptText = '') {
 
   try {
     const generated = await generateTextWithAI(promptInstruction, entry.content);
-    activeAnalysisMarkdown = generated;
-    renderAnalysisOutput(generated);
+
+    if (lensKey === 'pillarSuggestions') {
+      try {
+        const jsonMatch = generated.match(/\{[\s\S]*\}/);
+        const data = JSON.parse(jsonMatch ? jsonMatch[0] : generated);
+        currentPRSuggestions = data.suggestions || [];
+        renderPRReviewCards(data);
+
+        // Cache with entry
+        if (!entry.analysis) entry.analysis = {};
+        entry.analysis[lensKey] = data;
+        activeAnalysisMarkdown = formatPRSuggestionsAsMarkdown(data.suggestions || []);
+        saveEntries();
+        return;
+      } catch(parseErr) {
+        // Fallback to markdown rendering
+        activeAnalysisMarkdown = generated;
+        renderAnalysisOutput(generated);
+      }
+    } else {
+      activeAnalysisMarkdown = generated;
+      renderAnalysisOutput(generated);
+    }
 
     // Cache with entry
     if (!entry.analysis) entry.analysis = {};
@@ -1379,6 +1538,315 @@ async function runLensAnalysis(lensKey, customPromptText = '') {
       byId('retryAnalysisBtn')?.addEventListener('click', () => runLensAnalysis(lensKey, customPromptText));
     }
   }
+}
+
+function renderPRReviewCards(data) {
+  const card = byId('analysisOutputCard');
+  if (!card) return;
+
+  const suggestions = data.suggestions || [];
+  currentPRSuggestions = suggestions;
+
+  if (suggestions.length === 0) {
+    card.innerHTML = `
+      <div class="analysis-placeholder">
+        <div style="font-size:1.8rem;margin-bottom:8px">🌟</div>
+        <div style="font-weight:600;color:var(--text-primary);margin-bottom:4px">No New Life Pillar Suggestions</div>
+        <div>Keep writing about your career, fitness, goals, or relationships to discover new realizations and working solutions.</div>
+      </div>
+    `;
+    return;
+  }
+
+  card.innerHTML = `
+    <div class="pr-review-wrap">
+      <div class="pr-review-intro">
+        <strong>Pull Request Review</strong>: Found ${suggestions.length} proposed addition${suggestions.length > 1 ? 's' : ''} for your Life Pillars. Review and choose which realizations or solutions to merge into your living compendium.
+      </div>
+      ${suggestions.map((s, idx) => `
+        <div class="pr-diff-card" id="prCard_${idx}" data-index="${idx}">
+          <div class="pr-diff-header">
+            <div class="pr-header-tags">
+              <span class="pr-pillar-tag">${escapeHtml(s.pillarName || s.pillarId || 'General')}</span>
+              <span class="pr-type-tag">${s.type === 'solution' ? '🛠️ Working Solution' : '💡 Profound Realization'}</span>
+            </div>
+            <span style="font-size:0.7rem;color:var(--text-muted)">#suggestion-${idx + 1}</span>
+          </div>
+          <div class="pr-diff-box">
+            <span class="pr-diff-line">+ ${escapeHtml(s.text)}</span>
+          </div>
+          ${s.quote ? `<div class="pr-context-quote">"${escapeHtml(s.quote)}"</div>` : ''}
+          <div class="pr-actions-row">
+            <button class="pr-btn-discard" data-idx="${idx}">✗ Discard</button>
+            <button class="pr-btn-merge" data-idx="${idx}">✓ Accept &amp; Merge</button>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+
+  // Attach event listeners to merge & discard buttons
+  card.querySelectorAll('.pr-btn-merge').forEach(btn => {
+    btn.addEventListener('click', () => acceptPRSuggestion(parseInt(btn.dataset.idx, 10)));
+  });
+  card.querySelectorAll('.pr-btn-discard').forEach(btn => {
+    btn.addEventListener('click', () => discardPRSuggestion(parseInt(btn.dataset.idx, 10)));
+  });
+}
+
+function acceptPRSuggestion(index) {
+  const item = currentPRSuggestions[index];
+  if (!item) return;
+
+  const cardEl = byId(`prCard_${index}`);
+  const targetId = (item.pillarId || '').toLowerCase().trim();
+
+  // Find existing pillar or default to career
+  let pillar = lifePillars.find(p => p.id === targetId || p.name.toLowerCase().includes(targetId)) || lifePillars[0];
+
+  if (!pillar) {
+    pillar = lifePillars[0];
+  }
+
+  const entry = getEntry(currentId);
+  const entryDate = entry ? (entry.date || isoDate(new Date(entry.createdAt))) : isoDate();
+
+  const newEntry = {
+    id: uid(),
+    text: item.text,
+    date: entryDate,
+    quote: item.quote || '',
+    entryId: currentId,
+    type: item.type || 'realization'
+  };
+
+  if (item.type === 'solution') {
+    if (!pillar.solutions) pillar.solutions = [];
+    pillar.solutions.unshift(newEntry);
+  } else {
+    if (!pillar.realizations) pillar.realizations = [];
+    pillar.realizations.unshift(newEntry);
+  }
+
+  saveLifePillars();
+
+  if (cardEl) {
+    cardEl.classList.add('merged');
+    const actionsRow = cardEl.querySelector('.pr-actions-row');
+    if (actionsRow) {
+      actionsRow.innerHTML = `<span class="pr-merged-badge">✓ Merged into ${escapeHtml(pillar.name)}</span>`;
+    }
+  }
+}
+
+function discardPRSuggestion(index) {
+  const cardEl = byId(`prCard_${index}`);
+  if (cardEl) {
+    cardEl.classList.add('dismissed');
+    setTimeout(() => cardEl.remove(), 300);
+  }
+}
+
+function formatPRSuggestionsAsMarkdown(suggestions) {
+  if (!suggestions.length) return '';
+  return `### Life Pillar Insights\n` + suggestions.map(s => `
+- **${s.pillarName || s.pillarId}** (${s.type === 'solution' ? 'Working Solution' : 'Realization'}): ${s.text}
+  ${s.quote ? `> "${s.quote}"` : ''}
+  `).join('\n');
+}
+
+// ─── LIFE PILLARS KNOWLEDGE HUB VIEW & EDIT ──────────────────────────────────
+function openLifePillarsModal() {
+  loadLifePillars();
+  const modal = byId('pillarsModal');
+  if (!modal) return;
+
+  renderPillarsNav();
+  renderPillarDetail(activePillarId || (lifePillars[0] && lifePillars[0].id) || 'career');
+  modal.classList.remove('hidden');
+}
+
+function renderPillarsNav() {
+  const nav = byId('pillarsNav');
+  if (!nav) return;
+
+  nav.innerHTML = lifePillars.map(p => {
+    const totalCount = (p.realizations?.length || 0) + (p.solutions?.length || 0);
+    return `
+      <button class="pillar-tab-btn ${p.id === activePillarId ? 'active' : ''}" data-id="${p.id}">
+        <span>${p.icon || '📌'}</span>
+        <div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(p.name)}</div>
+        <span style="font-size:.65rem;opacity:.5">${totalCount}</span>
+      </button>
+    `;
+  }).join('');
+
+  nav.querySelectorAll('.pillar-tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      activePillarId = btn.dataset.id;
+      renderPillarsNav();
+      renderPillarDetail(activePillarId);
+    });
+  });
+}
+
+function renderPillarDetail(pillarId) {
+  activePillarId = pillarId;
+  const pillar = lifePillars.find(p => p.id === pillarId) || lifePillars[0];
+  if (!pillar) return;
+
+  const iconEl   = byId('activePillarIcon');
+  const nameEl   = byId('activePillarName');
+  const metaEl   = byId('activePillarMeta');
+  const delBtn   = byId('deletePillarBtn');
+  const rendered = byId('pillarContentRendered');
+  const editor   = byId('pillarContentEditor');
+  const textarea = byId('pillarMarkdownTextarea');
+
+  if (iconEl) iconEl.textContent = pillar.icon || '📌';
+  if (nameEl) nameEl.textContent = pillar.name;
+  if (metaEl) {
+    const rCount = pillar.realizations?.length || 0;
+    const sCount = pillar.solutions?.length || 0;
+    metaEl.textContent = `${rCount} realization${rCount !== 1 ? 's' : ''} · ${sCount} solution${sCount !== 1 ? 's' : ''}`;
+  }
+
+  if (delBtn) {
+    delBtn.classList.toggle('hidden', !!pillar.isDefault);
+  }
+
+  // Ensure viewer is shown and editor hidden
+  if (rendered) rendered.classList.remove('hidden');
+  if (editor) editor.classList.add('hidden');
+  if (textarea) textarea.value = pillar.manualNotes || '';
+
+  if (rendered) {
+    const rList = pillar.realizations || [];
+    const sList = pillar.solutions || [];
+
+    let html = '';
+
+    // Realizations Section
+    html += `
+      <div class="pillar-section-group">
+        <div class="pillar-sec-title">💡 Profound Realizations (${rList.length})</div>
+        ${rList.length === 0 ? `<div style="font-size:.78rem;color:var(--text-muted);font-style:italic">No realizations merged yet. Run Life Pillar Suggestions in the Analysis Hub to extract insights from your entries.</div>` : ''}
+        ${rList.map(r => `
+          <div class="pillar-item-card">
+            <div>${escapeHtml(r.text)}</div>
+            ${r.quote ? `<div style="font-size:.75rem;color:var(--text-muted);margin-top:4px;font-style:italic">"${escapeHtml(r.quote)}"</div>` : ''}
+            <div class="item-meta">Recorded on ${escapeHtml(r.date || 'Past entry')}</div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+
+    // Solutions Section
+    html += `
+      <div class="pillar-section-group" style="margin-top:16px">
+        <div class="pillar-sec-title">🛠️ Working Solutions &amp; Systems (${sList.length})</div>
+        ${sList.length === 0 ? `<div style="font-size:.78rem;color:var(--text-muted);font-style:italic">No solutions merged yet.</div>` : ''}
+        ${sList.map(s => `
+          <div class="pillar-item-card">
+            <div>${escapeHtml(s.text)}</div>
+            ${s.quote ? `<div style="font-size:.75rem;color:var(--text-muted);margin-top:4px;font-style:italic">"${escapeHtml(s.quote)}"</div>` : ''}
+            <div class="item-meta">Recorded on ${escapeHtml(s.date || 'Past entry')}</div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+
+    // Manual Notes / Principles Manual Section
+    if (pillar.manualNotes && pillar.manualNotes.trim()) {
+      html += `
+        <div class="pillar-section-group" style="margin-top:16px">
+          <div class="pillar-sec-title">📖 Living Principles Manual</div>
+          <div style="background:rgba(255,255,255,0.02);padding:14px;border-radius:var(--radius-sm);border:1px solid var(--border)">
+            ${renderMarkdown(pillar.manualNotes)}
+          </div>
+        </div>
+      `;
+    }
+
+    rendered.innerHTML = html;
+  }
+}
+
+function savePillarManualNotes() {
+  const pillar = lifePillars.find(p => p.id === activePillarId);
+  const textarea = byId('pillarMarkdownTextarea');
+  if (!pillar || !textarea) return;
+
+  pillar.manualNotes = textarea.value.trim();
+  saveLifePillars();
+
+  byId('pillarContentEditor')?.classList.add('hidden');
+  byId('pillarContentRendered')?.classList.remove('hidden');
+  renderPillarDetail(activePillarId);
+}
+
+function createNewPillar() {
+  const name = prompt('Enter a name for your new Life Pillar (e.g. "Mindset & Mental Resilience", "Financial Mastery"):');
+  if (!name || !name.trim()) return;
+
+  const icon = prompt('Enter an emoji icon for this pillar:', '✨') || '✨';
+
+  const newP = {
+    id: uid(),
+    name: name.trim(),
+    icon: icon.trim(),
+    isDefault: false,
+    realizations: [],
+    solutions: [],
+    manualNotes: `### ${name.trim()} Principles\n- Write your core personal rules and standards here.`
+  };
+
+  lifePillars.push(newP);
+  saveLifePillars();
+  activePillarId = newP.id;
+  renderPillarsNav();
+  renderPillarDetail(activePillarId);
+}
+
+function deleteActivePillar() {
+  const pillar = lifePillars.find(p => p.id === activePillarId);
+  if (!pillar || pillar.isDefault) return;
+
+  if (confirm(`Are you sure you want to delete the "${pillar.name}" pillar?`)) {
+    lifePillars = lifePillars.filter(p => p.id !== activePillarId);
+    saveLifePillars();
+    activePillarId = lifePillars[0]?.id || 'career';
+    renderPillarsNav();
+    renderPillarDetail(activePillarId);
+  }
+}
+
+function exportPillarMarkdown() {
+  const pillar = lifePillars.find(p => p.id === activePillarId);
+  if (!pillar) return;
+
+  let md = `# ${pillar.icon || '📌'} ${pillar.name}\n\n`;
+  md += `## 💡 Profound Realizations\n`;
+  (pillar.realizations || []).forEach(r => {
+    md += `- **${r.date}**: ${r.text}\n`;
+    if (r.quote) md += `  > "${r.quote}"\n`;
+  });
+
+  md += `\n## 🛠️ Working Solutions & Systems\n`;
+  (pillar.solutions || []).forEach(s => {
+    md += `- **${s.date}**: ${s.text}\n`;
+    if (s.quote) md += `  > "${s.quote}"\n`;
+  });
+
+  if (pillar.manualNotes) {
+    md += `\n## 📖 Living Principles Manual\n\n${pillar.manualNotes}\n`;
+  }
+
+  const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${pillar.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.md`;
+  a.click();
 }
 
 function renderAnalysisOutput(markdown) {
@@ -2284,12 +2752,45 @@ Folio is your personal, private journaling space. Everything saves automatically
     runLensAnalysis(activeLens, customPrompt);
   });
 
-  // Lens Selection Pills
-  document.querySelectorAll('.lens-pill').forEach(pill => {
-    pill.addEventListener('click', () => {
-      const lens = pill.dataset.lens;
-      openAnalysisView(lens);
-    });
+  // Dropdown Lens Selector
+  byId('analysisLensSelect')?.addEventListener('change', e => {
+    const lens = e.target.value;
+    activeLens = lens;
+    const customBox = byId('analysisCustomBox');
+    if (customBox) customBox.classList.toggle('hidden', lens !== 'custom');
+
+    const entry = getEntry(currentId);
+    const saved = entry?.analysis && entry.analysis[lens];
+    if (saved) {
+      activeAnalysisMarkdown = typeof saved === 'string' ? saved : JSON.stringify(saved);
+      if (lens === 'pillarSuggestions') {
+        try {
+          const data = typeof saved === 'string' ? JSON.parse(saved) : saved;
+          renderPRReviewCards(data);
+        } catch(err) {
+          renderAnalysisOutput(typeof saved === 'string' ? saved : '');
+        }
+      } else {
+        renderAnalysisOutput(activeAnalysisMarkdown);
+      }
+    } else {
+      const card = byId('analysisOutputCard');
+      if (card) {
+        card.innerHTML = `
+          <div class="analysis-placeholder">
+            <div style="font-size:1.8rem;margin-bottom:8px">${ANALYSIS_LENSES[lens]?.icon || '✨'}</div>
+            <div style="font-weight:600;color:var(--text-primary);margin-bottom:4px">${ANALYSIS_LENSES[lens]?.title || 'Ready for Analysis'}</div>
+            <div>Click <strong>"Generate"</strong> above to extract insights for this entry.</div>
+          </div>
+        `;
+      }
+    }
+  });
+
+  byId('runLensBtn')?.addEventListener('click', () => {
+    const lens = byId('analysisLensSelect')?.value || activeLens || 'todos';
+    const customPrompt = lens === 'custom' ? byId('analysisCustomInput')?.value.trim() : '';
+    runLensAnalysis(lens, customPrompt);
   });
 
   // Custom Prompt Execution
@@ -2302,6 +2803,39 @@ Folio is your personal, private journaling space. Everything saves automatically
   byId('analysisCustomInput')?.addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); runCustomPrompt(); }
   });
+
+  // Living Life Pillars Hub
+  loadLifePillars();
+  byId('lifePillarsBtn')?.addEventListener('click', openLifePillarsModal);
+  byId('closePillarsModal')?.addEventListener('click', () => byId('pillarsModal')?.classList.add('hidden'));
+  byId('pillarsModal')?.addEventListener('click', e => { if (e.target === byId('pillarsModal')) byId('pillarsModal')?.classList.add('hidden'); });
+
+  byId('editPillarToggleBtn')?.addEventListener('click', () => {
+    const rendered = byId('pillarContentRendered');
+    const editor   = byId('pillarContentEditor');
+    const textarea = byId('pillarMarkdownTextarea');
+    const pillar = lifePillars.find(p => p.id === activePillarId);
+
+    if (editor?.classList.contains('hidden')) {
+      if (textarea && pillar) textarea.value = pillar.manualNotes || '';
+      rendered?.classList.add('hidden');
+      editor?.classList.remove('hidden');
+      textarea?.focus();
+    } else {
+      rendered?.classList.remove('hidden');
+      editor?.classList.add('hidden');
+    }
+  });
+
+  byId('savePillarManualBtn')?.addEventListener('click', savePillarManualNotes);
+  byId('cancelPillarEditBtn')?.addEventListener('click', () => {
+    byId('pillarContentEditor')?.classList.add('hidden');
+    byId('pillarContentRendered')?.classList.remove('hidden');
+  });
+
+  byId('newPillarBtn')?.addEventListener('click', createNewPillar);
+  byId('deletePillarBtn')?.addEventListener('click', deleteActivePillar);
+  byId('exportPillarBtn')?.addEventListener('click', exportPillarMarkdown);
 
   // Keyboard Shortcuts
   document.addEventListener('keydown', e => {
@@ -2317,6 +2851,7 @@ Folio is your personal, private journaling space. Everything saves automatically
       byId('deleteModal')?.classList.add('hidden');
       byId('topicsModal')?.classList.add('hidden');
       byId('aiSettingsModal')?.classList.add('hidden');
+      byId('pillarsModal')?.classList.add('hidden');
       const analysisView = byId('analysisView');
       if (analysisView && !analysisView.classList.contains('hidden')) {
         closeAnalysisView();

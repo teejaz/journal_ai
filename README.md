@@ -9,7 +9,8 @@
 
 **Journal AI** is a distraction-free, privacy-first markdown journaling app designed for mindful daily writing and deep reflection. It features real-time metrics, an interactive calendar with date navigation, mood tracking, typography switching, dynamic 3-tier word count milestones (750w ➔ 1,400w ➔ 2,100w celebration), and instant `.md` file export with structured YAML frontmatter.
 
-The app features an interactive **AI Reflection & Analysis Hub** equipped with specialized prompt lenses:
+The app features an interactive **AI Reflection & Analysis Hub** equipped with a clean dropdown lens selector:
+- 🌟 **Living Life Pillars & PR Review**: Discovers profound realizations & working solutions across your life domains (Career, Gym, Dreams, Relationships, Custom) with a GitHub PR-style review engine to **✓ Accept & Merge** or **✗ Discard** suggestions.
 - 📋 **To-Dos & Actions**: Extracts interactive markdown checklists from your thoughts.
 - 🧭 **Core Principles**: Discovers mental models, values, and life rules you set for yourself.
 - 🔥 **Motivational Coach**: Empowering encouragement and tailored daily mantras.
@@ -19,7 +20,7 @@ The app features an interactive **AI Reflection & Analysis Hub** equipped with s
 - 🏷️ **Compound Topics & Tags**: Discovers compound themes (`career · excited`) and `#subtopics`.
 - 💬 **Custom AI Prompts**: Ask any free-form question against your journal entry.
 
-All entries and API keys stay 100% client-side in browser local storage—requiring zero build tools or backend servers.
+All entries, life pillars, and API keys stay 100% client-side in browser local storage—requiring zero build tools or backend servers.
 
 ---
 
