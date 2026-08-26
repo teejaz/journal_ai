@@ -50,9 +50,15 @@
     <!-- Topic Filter Chips -->
     <div class="topic-filter-bar" id="topicFilterBar"></div>
 
-    <!-- Entries List -->
+    <!-- Sidebar View Switcher Tabs (Journal Entries vs AI Analyses) -->
+    <div class="sidebar-tab-row">
+      <button class="sidebar-view-tab active" id="tabViewEntries" data-view="entries">📝 Journal</button>
+      <button class="sidebar-view-tab" id="tabViewAnalysis" data-view="analysis">✨ Analysis</button>
+    </div>
+
+    <!-- Entries List Heading Row -->
     <div class="entries-label-row">
-      <span class="entries-label">Entries</span>
+      <span class="entries-label" id="sidebarListHeading">Journal Entries</span>
       <span class="clear-topic-filter hidden" id="clearTopicFilter">&#10005; clear filter</span>
     </div>
     <div class="entries-list" id="entriesList"></div>

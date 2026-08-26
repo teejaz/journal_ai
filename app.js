@@ -85,6 +85,7 @@ let currentFont       = 'lora';
 let previewMode       = false;
 let activeTopicFilter = null;
 let selectedProvider  = 'gemini';
+let sidebarView       = 'entries';
 
 const DEFAULT_SYSTEM_PROMPT = 'You are an empathetic, insightful executive life coach and journaling mentor. Help the author extract clarity, uncover root causes, celebrate wins, cultivate strong personal discipline, and discover actionable next steps.';
 
@@ -1434,6 +1435,12 @@ function openAnalysisView(lens = 'todos') {
   if (goalTrack) goalTrack.classList.add('hidden');
   if (analysisView) analysisView.classList.remove('hidden');
 
+  // Update sidebar tab indicator
+  sidebarView = 'analysis';
+  byId('tabViewAnalysis')?.classList.add('active');
+  byId('tabViewEntries')?.classList.remove('active');
+  renderEntriesList();
+
   // Update header info
   const entryTag = byId('analysisEntryTag');
   if (entryTag) {
@@ -1494,6 +1501,12 @@ function closeAnalysisView() {
   if (entryMeta) entryMeta.classList.remove('hidden');
   if (mdToolbar) mdToolbar.classList.remove('hidden');
   if (goalTrack) goalTrack.classList.remove('hidden');
+
+  // Update sidebar tab indicator
+  sidebarView = 'entries';
+  byId('tabViewEntries')?.classList.add('active');
+  byId('tabViewAnalysis')?.classList.remove('active');
+  renderEntriesList();
 
   byId('editorTextarea')?.focus();
 }
@@ -2217,7 +2230,12 @@ function renderMarkdown(md) {
 // ─── UI LIST & CALENDAR RENDERING ─────────────────────────────────────────────
 function renderEntriesList() {
   const container = byId('entriesList');
+  const heading = byId('sidebarListHeading');
   if (!container) return;
+
+  if (heading) {
+    heading.textContent = sidebarView === 'analysis' ? 'AI Analysis Files' : 'Journal Entries';
+  }
 
   const q = searchQuery.toLowerCase();
   let filtered = entries.filter(e =>
@@ -2227,7 +2245,7 @@ function renderEntriesList() {
 
   container.innerHTML = '';
   if (filtered.length === 0) {
-    container.innerHTML = `<div style="padding:16px;text-align:center;font-size:.78rem;color:var(--text-muted)">No entries found</div>`;
+    container.innerHTML = `<div style="padding:16px;text-align:center;font-size:.78rem;color:var(--text-muted)">${sidebarView === 'analysis' ? 'No analysis files found' : 'No entries found'}</div>`;
     return;
   }
 
@@ -2237,27 +2255,71 @@ function renderEntriesList() {
     el.dataset.id = entry.id;
 
     const mood = entry.mood ? MOOD_EMOJIS[entry.mood] : '';
-    const preview = plainText(entry.content).slice(0, 60) || 'Empty entry';
-    const topicChips = (entry.topics || []).slice(0, 2).map(({ topic }) =>
-      `<span style="font-size:.6rem;background:rgba(138,80,255,.15);border:1px solid rgba(138,80,255,.25);border-radius:99px;padding:1px 6px;color:#c8a8ff;margin-right:2px">${topic}</span>`
-    ).join('');
 
-    const subtagChips = (entry.subtopics || []).slice(0, 2).map(t =>
-      `<span style="font-size:.58rem;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:1px 5px;color:var(--text-muted);margin-right:2px;font-family:var(--font-mono)">#${t}</span>`
-    ).join('');
+    if (sidebarView === 'analysis') {
+      const analyzedLenses = entry.analysis ? Object.keys(entry.analysis).filter(k => entry.analysis[k]) : [];
+      
+      const lensBadges = analyzedLenses.length > 0
+        ? analyzedLenses.slice(0, 3).map(k => {
+            const lensObj = ANALYSIS_LENSES[k];
+            return `<span class="analysis-lens-badge">${lensObj?.icon || '✨'} ${lensObj?.name ? lensObj.name.split(' ')[0] : k}</span>`;
+          }).join('') + (analyzedLenses.length > 3 ? `<span class="analysis-lens-badge">+${analyzedLenses.length - 3}</span>` : '')
+        : `<span style="font-size:.62rem;color:var(--text-muted);font-style:italic">⚠️ Not analyzed</span>`;
 
-    el.innerHTML = `
-      <div class="entry-item-title">${entry.title || 'Untitled'}</div>
-      <div class="entry-item-meta">
-        <span class="entry-item-mood">${mood}</span>
-        <span>${formatShortDate(entry.createdAt)}</span>
-        ${topicChips}
-      </div>
-      <div class="entry-item-preview">${preview}${preview.length >= 60 ? '…' : ''}</div>
-      ${subtagChips ? `<div style="margin-top:3px">${subtagChips}</div>` : ''}
-    `;
+      let previewText = entry.aiSummary || '';
+      if (!previewText && analyzedLenses.length > 0) {
+        const firstLens = entry.analysis[analyzedLenses[0]];
+        if (typeof firstLens === 'string') {
+          previewText = plainText(firstLens).slice(0, 65);
+        } else if (firstLens && firstLens.suggestions && firstLens.suggestions.length > 0) {
+          previewText = firstLens.suggestions[0].quotedText || firstLens.suggestions[0].text || '';
+        }
+      }
+      if (!previewText) previewText = plainText(entry.content).slice(0, 60) || 'Empty entry';
 
-    el.addEventListener('click', () => loadEntry(entry.id));
+      el.innerHTML = `
+        <div class="entry-item-title" style="display:flex;align-items:center;justify-content:space-between">
+          <span>✨ ${entry.title || 'Untitled'}</span>
+          <span style="font-size:.62rem;color:var(--text-muted);font-weight:normal">${formatShortDate(entry.createdAt)}</span>
+        </div>
+        <div class="entry-item-meta" style="margin-top:3px;margin-bottom:3px">
+          ${lensBadges}
+        </div>
+        <div class="entry-item-preview" style="color:var(--text-secondary)">${previewText}${previewText.length >= 60 ? '…' : ''}</div>
+      `;
+
+      el.addEventListener('click', () => {
+        loadEntry(entry.id);
+        const firstLens = analyzedLenses[0] || 'todos';
+        openAnalysisView(firstLens);
+      });
+    } else {
+      const preview = plainText(entry.content).slice(0, 60) || 'Empty entry';
+      const topicChips = (entry.topics || []).slice(0, 2).map(({ topic }) =>
+        `<span style="font-size:.6rem;background:rgba(138,80,255,.15);border:1px solid rgba(138,80,255,.25);border-radius:99px;padding:1px 6px;color:#c8a8ff;margin-right:2px">${topic}</span>`
+      ).join('');
+
+      const subtagChips = (entry.subtopics || []).slice(0, 2).map(t =>
+        `<span style="font-size:.58rem;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:1px 5px;color:var(--text-muted);margin-right:2px;font-family:var(--font-mono)">#${t}</span>`
+      ).join('');
+
+      el.innerHTML = `
+        <div class="entry-item-title">${entry.title || 'Untitled'}</div>
+        <div class="entry-item-meta">
+          <span class="entry-item-mood">${mood}</span>
+          <span>${formatShortDate(entry.createdAt)}</span>
+          ${topicChips}
+        </div>
+        <div class="entry-item-preview">${preview}${preview.length >= 60 ? '…' : ''}</div>
+        ${subtagChips ? `<div style="margin-top:3px">${subtagChips}</div>` : ''}
+      `;
+
+      el.addEventListener('click', () => {
+        loadEntry(entry.id);
+        closeAnalysisView();
+      });
+    }
+
     container.appendChild(el);
   });
 }
@@ -2919,6 +2981,23 @@ Folio is your personal, private journaling space. Everything saves automatically
     activeTopicFilter = null;
     byId('clearTopicFilter')?.classList.add('hidden');
     renderSidebarTopicFilters();
+    renderEntriesList();
+  });
+
+  // Sidebar View Switcher Tabs (Journal Entries vs AI Analyses)
+  byId('tabViewEntries')?.addEventListener('click', () => {
+    sidebarView = 'entries';
+    byId('tabViewEntries')?.classList.add('active');
+    byId('tabViewAnalysis')?.classList.remove('active');
+    closeAnalysisView();
+    renderEntriesList();
+  });
+
+  byId('tabViewAnalysis')?.addEventListener('click', () => {
+    sidebarView = 'analysis';
+    byId('tabViewAnalysis')?.classList.add('active');
+    byId('tabViewEntries')?.classList.remove('active');
+    openAnalysisView('todos');
     renderEntriesList();
   });
 
