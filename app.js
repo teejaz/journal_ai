@@ -1438,21 +1438,6 @@ function updateStats(content) {
   if (goalCongratsEl) {
     goalCongratsEl.classList.toggle('hidden', !isCongrats);
   }
-
-  const topWords = getTopWords(content);
-  const wordCloud = byId('wordCloud');
-  if (wordCloud) {
-    if (topWords.length > 0) {
-      const maxFreq = topWords[0][1];
-      wordCloud.innerHTML = topWords.map(([word, freq]) => {
-        const ratio = freq / maxFreq;
-        const cls = ratio > 0.7 ? 'wt-xl' : '';
-        return `<span class="word-tag ${cls}" title="${freq}×">${word}</span>`;
-      }).join('');
-    } else {
-      wordCloud.innerHTML = `<span style="font-size:.78rem;color:var(--text-muted)">Start writing to see top words</span>`;
-    }
-  }
 }
 
 function updateAllTimeStats() {
